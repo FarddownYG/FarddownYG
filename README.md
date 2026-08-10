@@ -18,8 +18,6 @@
 </div>
 
 > **♠ Pourquoi l’as de pique ?** Le dépassement de soi&nbsp;: ne jamais s’installer dans sa zone de confort, se perfectionner un peu plus chaque jour.
->
-> Backend et sécurité offensive côté clavier, jeux vidéo côté cœur, une R32 côté garage.
 
 <div align="center">
   <picture>
