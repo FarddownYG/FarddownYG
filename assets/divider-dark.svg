@@ -1,0 +1,40 @@
+<svg viewBox="0 0 1000 120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Séparateur — silhouette hommage R32">
+  <defs>
+    <path id="spade" d="M100,8 C96,34 60,64 42,92 C28,114 26,132 34,148 C44,166 70,172 86,158 C92,152 96,146 97,140 C95,172 86,196 68,212 C64,216 66,220 71,220 L129,220 C134,220 136,216 132,212 C114,196 105,172 103,140 C104,146 108,152 114,158 C130,172 156,166 166,148 C174,132 172,114 158,92 C140,64 104,34 100,8 Z"/>
+  </defs>
+  <style>
+    .draw { stroke-dasharray: 600; stroke-dashoffset: 600; animation: draw 1.8s cubic-bezier(0.4,0,0.2,1) 0.2s forwards; }
+    .draw2 { stroke-dasharray: 600; stroke-dashoffset: 600; animation: draw 1.4s cubic-bezier(0.4,0,0.2,1) 0.9s forwards; }
+    .drawc { stroke-dasharray: 82; stroke-dashoffset: 82; animation: draw 1.4s cubic-bezier(0.4,0,0.2,1) 0.9s forwards; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+    @media (prefers-reduced-motion: reduce) { .draw, .draw2, .drawc { animation: none; stroke-dashoffset: 0; } }
+  </style>
+
+  <!-- La route -->
+  <path d="M8,78 H486" stroke="#2A3140" stroke-width="1"/>
+  <path d="M514,78 H992" stroke="#2A3140" stroke-width="1"/>
+  <use href="#spade" transform="translate(494,64) scale(0.06)" fill="#C8A96A" opacity="0.9"/>
+
+  <!-- Hommage R32 : silhouette seule, aucun écusson -->
+  <g transform="translate(690,6)" stroke="#9AA3B2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path class="draw" pathLength="600" d="M10,52 L7,39 C7,36.5 9,35 15,34.5 L34,33 L98,29 L120,12 L174,11 L200,26 L230,31 L248,33 C253,34 255,38 254,43 L250,52 L246,60 L224,60 A18,18 0 0 0 188,60 L84,60 A18,18 0 0 0 48,60 L14,60 Z"/>
+    <path class="draw" pathLength="600" d="M104,29 L122,15 L170,14 L192,27"/>
+    <path class="draw" pathLength="600" d="M148,30 V58"/>
+    <path class="draw" pathLength="600" d="M104,30 l-6,-3"/>
+    <path class="draw2" pathLength="600" d="M222,31 V24.5 M238,31.5 V25"/>
+    <path class="draw2" pathLength="600" d="M212,23 L252,23.8" stroke="#C8A96A" stroke-width="3"/>
+    <path class="draw2" pathLength="600" d="M251,21.5 V28" stroke="#C8A96A"/>
+    <circle class="drawc" cx="66" cy="58" r="13"/>
+    <circle class="drawc" cx="206" cy="58" r="13"/>
+    <circle cx="66" cy="58" r="4.5"/>
+    <circle cx="206" cy="58" r="4.5"/>
+    <g transform="translate(66,58)">
+      <line y1="-5" y2="-11"/><line y1="-5" y2="-11" transform="rotate(72)"/><line y1="-5" y2="-11" transform="rotate(144)"/><line y1="-5" y2="-11" transform="rotate(216)"/><line y1="-5" y2="-11" transform="rotate(288)"/>
+    </g>
+    <g transform="translate(206,58)">
+      <line y1="-5" y2="-11"/><line y1="-5" y2="-11" transform="rotate(72)"/><line y1="-5" y2="-11" transform="rotate(144)"/><line y1="-5" y2="-11" transform="rotate(216)"/><line y1="-5" y2="-11" transform="rotate(288)"/>
+    </g>
+  </g>
+
+  <text x="992" y="102" text-anchor="end" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10" letter-spacing="1" fill="#6B7280" opacity="0.75">// garage : hommage R32</text>
+</svg>
