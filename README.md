@@ -2,11 +2,11 @@
   ♠ Profil : as de pique.
   Animations : SVG pur (SMIL + CSS), zéro JavaScript — GitHub sanitize le markdown,
   seul ce chemin de rendu est fiable.
-  Stats : uniquement des services vérifiés comme fonctionnels sur ce profil
-  (streak-stats.demolab.com, github-readme-activity-graph.vercel.app).
-  github-readme-stats.vercel.app a été retiré : son instance publique est saturée
-  et renvoyait des images cassées. Pour le remettre (stats + top langages),
-  il faut déployer une instance perso : https://github.com/anuraghazra/github-readme-stats#deploy-on-your-own-vercel-instance
+  Statistiques : toutes calculées maison par tools/build-stats.py, exécuté chaque
+  heure par .github/workflows/records.yml et publié sur la branche « stats ».
+  Plus aucun service tiers : les instances publiques gratuites tombent ou servent
+  du cache, et on ne peut alors pas savoir si un chiffre est à jour. Chaque carte
+  affiche l'heure de son calcul.
 -->
 
 <div align="center">
@@ -31,9 +31,9 @@
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://streak-stats.demolab.com?user=FarddownYG&locale=fr&background=0B0E13&border=2A3140&stroke=2A3140&ring=C8A96A&fire=C8A96A&currStreakNum=E8EAF0&sideNums=E8EAF0&currStreakLabel=C8A96A&sideLabels=9AA3B2&dates=6B7280&border_radius=10">
-    <source media="(prefers-color-scheme: light)" srcset="https://streak-stats.demolab.com?user=FarddownYG&locale=fr&background=FBF7EE&border=D9D2C2&stroke=D9D2C2&ring=B8934A&fire=B8934A&currStreakNum=14171C&sideNums=14171C&currStreakLabel=8C6E33&sideLabels=6B7280&dates=8B857A&border_radius=10">
-    <img src="https://streak-stats.demolab.com?user=FarddownYG&locale=fr&background=0B0E13&border=2A3140&stroke=2A3140&ring=C8A96A&fire=C8A96A&currStreakNum=E8EAF0&sideNums=E8EAF0&currStreakLabel=C8A96A&sideLabels=9AA3B2&dates=6B7280&border_radius=10" alt="Série de contributions" height="180">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FarddownYG/FarddownYG/stats/serie-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/FarddownYG/FarddownYG/stats/serie-light.svg">
+    <img src="https://raw.githubusercontent.com/FarddownYG/FarddownYG/stats/serie-dark.svg" alt="Série de contributions : total, série actuelle, plus longue série" width="97%">
   </picture>
 </div>
 
@@ -47,9 +47,9 @@
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github-readme-activity-graph.vercel.app/graph?username=FarddownYG&custom_title=Graphique%20des%20contributions&bg_color=0B0E13&color=9AA3B2&line=C8A96A&point=E8EAF0&area=true&area_color=C8A96A&hide_border=false&radius=10">
-    <source media="(prefers-color-scheme: light)" srcset="https://github-readme-activity-graph.vercel.app/graph?username=FarddownYG&custom_title=Graphique%20des%20contributions&bg_color=FBF7EE&color=5F6672&line=B8934A&point=14171C&area=true&area_color=B8934A&hide_border=false&radius=10">
-    <img src="https://github-readme-activity-graph.vercel.app/graph?username=FarddownYG&custom_title=Graphique%20des%20contributions&bg_color=0B0E13&color=9AA3B2&line=C8A96A&point=E8EAF0&area=true&area_color=C8A96A&hide_border=false&radius=10" alt="Graphique des contributions" width="97%">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FarddownYG/FarddownYG/stats/activite-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/FarddownYG/FarddownYG/stats/activite-light.svg">
+    <img src="https://raw.githubusercontent.com/FarddownYG/FarddownYG/stats/activite-dark.svg" alt="Graphique des contributions des 90 derniers jours" width="97%">
   </picture>
 </div>
 

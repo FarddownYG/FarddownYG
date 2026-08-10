@@ -1,16 +1,21 @@
-name: Records de contributions
+name: Statistiques du profil
 
-# Recalcule chaque jour les records à partir du calendrier de contributions
-# et publie les deux cartes SVG sur la branche « stats ».
+# Recalcule toutes les cartes de statistiques à partir du calendrier de
+# contributions, et les publie sur la branche « stats ».
+#
+# Toutes les heures, et non une fois par jour : un chiffre vieux de vingt
+# heures se voit, surtout la série en cours et le graphique d'activité.
+# Chaque carte porte l'heure de son calcul, la fraîcheur est donc vérifiable
+# d'un coup d'œil.
 #
 # Pourquoi une branche séparée plutôt que main : GitHub ne compte dans le
 # graphe de contributions que les commits de la branche par défaut et de
-# gh-pages. Publier ici évite qu'un commit automatique quotidien gonfle
-# artificiellement la série — ce serait la contredire.
+# gh-pages. Publier ici évite qu'un commit automatique gonfle artificiellement
+# la série — ce serait la contredire.
 
 on:
   schedule:
-    - cron: "17 4 * * *"
+    - cron: "7 * * * *"
   workflow_dispatch:
   push:
     branches: [main]
@@ -22,7 +27,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: records
+  group: stats
   cancel-in-progress: true
 
 jobs:
@@ -39,7 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LOGIN: ${{ github.repository_owner }}
-        run: python tools/build-stats.py out/records-dark.svg out/records-light.svg
+        run: python tools/build-stats.py out
 
       - name: Publier sur la branche stats
         env:
@@ -51,7 +56,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -q -m "Records au $(date -u +%Y-%m-%d)"
+          git commit -q -m "Statistiques au $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push -q --force \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             stats:refs/heads/stats
