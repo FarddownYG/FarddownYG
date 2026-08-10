@@ -136,11 +136,11 @@ def build(p):
     a('      <stop offset="0" stop-color="%s" stop-opacity="%s"/>' % p["glow"])
     a('      <stop offset="1" stop-color="%s" stop-opacity="0"/>' % p["glow"][0])
     a('    </radialGradient>')
-    a('    <filter id="spadeGlow" x="-40%%" y="-40%%" width="180%%" height="180%%">')
+    a('    <filter id="spadeGlow" x="-40%" y="-40%" width="180%" height="180%">')
     a('      %s' % p["emblem_filter"])
     a('    </filter>')
     if p["card_shadow"]:
-        a('    <filter id="cardShadow" x="-20%%" y="-20%%" width="140%%" height="140%%">')
+        a('    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">')
         a('      %s' % p["card_shadow"])
         a('    </filter>')
     a('    <clipPath id="ulClip"><rect x="330" y="172.5" width="308" height="4"/></clipPath>')

@@ -40,7 +40,7 @@
       <stop offset="0" stop-color="#C8A96A" stop-opacity="0.14"/>
       <stop offset="1" stop-color="#C8A96A" stop-opacity="0"/>
     </radialGradient>
-    <filter id="spadeGlow" x="-40%%" y="-40%%" width="180%%" height="180%%">
+    <filter id="spadeGlow" x="-40%" y="-40%" width="180%" height="180%">
       <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#C8A96A" flood-opacity="0.16"/>
     </filter>
     <clipPath id="ulClip"><rect x="330" y="172.5" width="308" height="4"/></clipPath>

@@ -40,10 +40,10 @@
       <stop offset="0" stop-color="#B8934A" stop-opacity="0.12"/>
       <stop offset="1" stop-color="#B8934A" stop-opacity="0"/>
     </radialGradient>
-    <filter id="spadeGlow" x="-40%%" y="-40%%" width="180%%" height="180%%">
+    <filter id="spadeGlow" x="-40%" y="-40%" width="180%" height="180%">
       <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#3A2F1B" flood-opacity="0.2"/>
     </filter>
-    <filter id="cardShadow" x="-20%%" y="-20%%" width="140%%" height="140%%">
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#332A18" flood-opacity="0.15"/>
     </filter>
     <clipPath id="ulClip"><rect x="330" y="172.5" width="308" height="4"/></clipPath>
