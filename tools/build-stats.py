@@ -188,16 +188,30 @@ def _jour(iso):
 
 def series(jours):
     """Série en cours et plus longue série.
-    Une journée encore vide ne casse pas la série en cours : elle n'est pas
-    finie. On part donc d'hier si aujourd'hui est à zéro — c'est la
-    convention de GitHub et des compteurs de série usuels."""
-    aujourdhui = date.today()
-    depart = aujourdhui if jours.get(aujourdhui.isoformat(), 0) > 0 else aujourdhui - timedelta(days=1)
-    n, d = 0, depart
-    while jours.get(d.isoformat(), 0) > 0:
-        n += 1
-        d -= timedelta(days=1)
-    courante = (n, (depart - timedelta(days=n - 1)).isoformat(), depart.isoformat()) if n else (0, None, None)
+
+    La série se compte à rebours depuis la DERNIÈRE journée active, jamais
+    depuis « aujourd'hui ». La nuance est décisive : le runner GitHub vit en
+    UTC, le calendrier du profil dans le fuseau du compte. À 23 h UTC il est
+    déjà le lendemain à Paris, la grille contient donc une journée que l'UTC
+    ignore — partir de l'UTC amputait la série d'un jour. Une journée encore
+    vide ne la casse pas non plus : elle n'est pas finie.
+
+    La série reste vivante tant que la dernière journée active n'a pas plus
+    d'un jour de retard sur l'UTC. Un jour de tolérance suffit à couvrir
+    n'importe quel fuseau, de UTC-12 à UTC+14."""
+    actifs = sorted(k for k, v in jours.items() if v > 0)
+    if not actifs:
+        return (0, None, None), (0, None, None)
+
+    fin_serie = _jour(actifs[-1])
+    if (date.today() - fin_serie).days > 1:
+        courante = (0, None, None)
+    else:
+        n, d = 0, fin_serie
+        while jours.get(d.isoformat(), 0) > 0:
+            n += 1
+            d -= timedelta(days=1)
+        courante = (n, (fin_serie - timedelta(days=n - 1)).isoformat(), fin_serie.isoformat())
 
     best, best_fin, cur, prev = 0, None, 0, None
     for k in sorted(jours):

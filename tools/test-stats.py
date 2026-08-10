@@ -84,6 +84,20 @@ courante, longue = bs.series(j)
 verifie("aujourd'hui encore vide ne casse pas la série", courante[0] == 5,
         "série calculée : %s" % courante[0])
 
+# Panne survenue : le runner vit en UTC, le calendrier du profil dans le fuseau
+# du compte. À 23 h UTC il est déjà le lendemain à Paris ; partir de « aujourd'hui
+# en UTC » ignorait cette journée et amputait la série d'un jour.
+demain = (fin + timedelta(days=1)).isoformat()
+javance = {(fin - timedelta(days=i)).isoformat(): 3 for i in range(0, 5)}
+javance[demain] = 4
+verifie("une journée en avance sur l'UTC (fuseau du compte) est comptée",
+        bs.series(javance)[0][0] == 6, "série calculée : %s" % bs.series(javance)[0][0])
+
+# ... mais une série réellement interrompue doit bien retomber à zéro
+vieux = {(fin - timedelta(days=i)).isoformat(): 3 for i in range(5, 12)}
+verifie("une série interrompue depuis plus d'un jour retombe à zéro",
+        bs.series(vieux)[0][0] == 0, "série calculée : %s" % bs.series(vieux)[0][0])
+
 j2 = {(fin - timedelta(days=i)).isoformat(): 3 for i in range(0, 4)}
 j2[(fin - timedelta(days=4)).isoformat()] = 0
 j2.update({(fin - timedelta(days=i)).isoformat(): 3 for i in range(5, 15)})
