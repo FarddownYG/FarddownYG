@@ -13,7 +13,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/header-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="assets/header-light.svg">
-    <img src="assets/header-dark.svg" alt="Yanis — l’as de pique : backend, cybersécurité, game dev" width="100%">
+    <img src="assets/header-dark.svg" alt="Yanis — l’as de pique : ingénieur cybersécurité, fondateur, développeur de jeux et de logiciels" width="100%">
   </picture>
 </div>
 
