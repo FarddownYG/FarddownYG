@@ -438,13 +438,18 @@ def main():
     if len(args) != 1:
         raise SystemExit(__doc__)
     dossier = args[0]
-    r = stats(calendrier_demo() if "--demo" in sys.argv else calendrier())
+    jours = calendrier_demo() if "--demo" in sys.argv else calendrier()
+    r = stats(jours)
     os.makedirs(dossier, exist_ok=True)
     for nom, rendu in CARTES:
         for suffixe, pal in (("dark", DARK), ("light", LIGHT)):
             chemin = os.path.join(dossier, "%s-%s.svg" % (nom, suffixe))
             open(chemin, "w", encoding="utf-8").write(rendu(r, pal))
             print("écrit :", chemin)
+    # Trace des dernières journées : si un chiffre paraît faux un jour, cette
+    # ligne dit tout de suite ce que GitHub a renvoyé, sans avoir à deviner.
+    print("dernières journées vues : " +
+          " · ".join("%s=%d" % (k[5:], jours[k]) for k in sorted(jours)[-6:]))
     n, d1, d2 = r["courante"]
     print("total %d · série %d (%s → %s) · plus longue %d · record %d le %s · "
           "%d jours actifs · %.1f/jour"
