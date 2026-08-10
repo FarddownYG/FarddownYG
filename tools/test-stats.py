@@ -74,6 +74,23 @@ verifie("un simple décalage de fuseau est accepté",
         sum(bs.calendrier().values()) == sum(decale.values()))
 bs.compte_cree_le, bs.via_page, bs.via_graphql = _cree, _page, _gql
 
+# --- 2 bis. La journée en avance sur l'UTC ne doit pas être jetée -------------
+# Panne survenue : la grille du profil contenait bien le 11 août (fuseau de
+# Paris), mais le filtre final coupait à « aujourd'hui en UTC » et la supprimait
+# juste après l'avoir récupérée.
+print("Conservation de la journée en avance sur l'UTC")
+avec_demain = dict(sain)
+avec_demain[(fin + timedelta(days=1)).isoformat()] = 9
+_cree, _page, _gql = bs.compte_cree_le, bs.via_page, bs.via_graphql
+bs.compte_cree_le = lambda: fin - timedelta(days=59)
+bs.via_page = lambda d, f: dict(avec_demain)
+bs.via_graphql = lambda d, f: dict(avec_demain)
+garde = bs.calendrier()
+verifie("la journée du lendemain UTC est conservée",
+        garde.get((fin + timedelta(days=1)).isoformat()) == 9,
+        "valeur : %s" % garde.get((fin + timedelta(days=1)).isoformat()))
+bs.compte_cree_le, bs.via_page, bs.via_graphql = _cree, _page, _gql
+
 # --- 3. Calcul des séries ----------------------------------------------------
 # La série en cours ne doit pas être cassée par une journée d'aujourd'hui encore
 # vide : elle n'est pas finie.

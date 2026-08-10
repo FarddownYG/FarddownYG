@@ -161,7 +161,12 @@ def calendrier():
         an += 1
     if not jours:
         raise SystemExit("échec de récupération, cartes inchangées :\n  " + "\n  ".join(erreurs))
-    return {k: v for k, v in jours.items() if k <= aujourdhui.isoformat()}
+    # Tolérer un jour au-delà de l'UTC. La grille du profil est datée dans le
+    # fuseau du compte : à 23 h UTC elle contient déjà le lendemain parisien.
+    # Couper à « aujourd'hui en UTC » revenait à jeter cette journée juste après
+    # être allé la chercher — c'est ce qui amputait la série d'un jour.
+    limite = (aujourdhui + timedelta(days=1)).isoformat()
+    return {k: v for k, v in jours.items() if k <= limite}
 
 
 def calendrier_demo():
