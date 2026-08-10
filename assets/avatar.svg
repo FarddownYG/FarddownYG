@@ -1,0 +1,47 @@
+<svg viewBox="0 0 1000 1000" width="1000" height="1000" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="As de pique — avatar de Yanis">
+  <!--
+    Avatar : la pique évidée dans un jeton d'acier, cerclé d'or.
+    Pensé pour le recadrage circulaire de GitHub et pour rester lisible à 40 px
+    (avatar de commentaire) comme à 20 px : aucun détail sous-pixel, une seule
+    masse, une rampe de valeurs complète (nuit → or → acier → pique nuit) pour
+    que le bord tienne aussi bien sur fond blanc que sur fond sombre.
+    Le col de la pique est élargi par rapport au tracé du header : coupe optique
+    assumée pour les petites tailles, le tracé du header reste inchangé.
+  -->
+  <defs>
+    <path id="spade" d="M100,8 C96,34 60,64 42,92 C28,114 26,132 34,148 C44,166 70,172 86,158 C92,152 96,146 93.5,140 C92,172 86,196 68,212 C64,216 66,220 71,220 L129,220 C134,220 136,216 132,212 C114,196 108,172 106.5,140 C104,146 108,152 114,158 C130,172 156,166 166,148 C174,132 172,114 158,92 C140,64 104,34 100,8 Z"/>
+
+    <!-- Rampe acier reprise du header, pour que le jeton soit de la même matière que l'emblème -->
+    <linearGradient id="disc" x1="0.12" y1="0" x2="0.88" y2="1">
+      <stop offset="0" stop-color="#EEF1F6"/>
+      <stop offset="0.45" stop-color="#B9C2D0"/>
+      <stop offset="0.80" stop-color="#8A93A5"/>
+      <stop offset="1" stop-color="#A7B0C0"/>
+    </linearGradient>
+
+    <!-- Biseau : l'or du profil, assez large pour survivre à 20 px -->
+    <linearGradient id="bezel" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#F0DCA6"/>
+      <stop offset="0.45" stop-color="#C8A96A"/>
+      <stop offset="1" stop-color="#9A7C38"/>
+    </linearGradient>
+
+    <mask id="cut">
+      <circle cx="500" cy="500" r="446" fill="#FFFFFF"/>
+      <g transform="translate(212,154.4) scale(2.88)">
+        <use href="#spade" fill="#000000"/>
+      </g>
+    </mask>
+  </defs>
+
+  <rect width="1000" height="1000" fill="#0B0E13"/>
+
+  <!-- Fond de la pique évidée : la nuit du profil, posée explicitement -->
+  <circle cx="500" cy="500" r="446" fill="#10141D"/>
+  <circle cx="500" cy="500" r="446" fill="url(#disc)" mask="url(#cut)"/>
+
+  <!-- Biseau or : 446 → 474 -->
+  <circle cx="500" cy="500" r="460" fill="none" stroke="url(#bezel)" stroke-width="28"/>
+  <!-- Liseré nuit : 474 → 500, c'est lui qui donne un bord au jeton sur fond clair -->
+  <circle cx="500" cy="500" r="487" fill="none" stroke="#0B0E13" stroke-width="26"/>
+</svg>
