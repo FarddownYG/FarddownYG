@@ -105,8 +105,13 @@ def via_page(debut, fin):
             continue
         mid = re.search(r'id="([^"]+)"', tag)
         texte = infobulles.get(mid.group(1), "") if mid else ""
-        mn = re.search(r"(\d+)", texte.replace(NNBSP, "").replace(" ", "").replace(" ", ""))
-        out[jour] = int(mn.group(1)) if mn else 0
+        # Le compte est TOUJOURS en tête de l'infobulle : « 7 contributions on
+        # July 12th ». Il faut l'ancrer là. Prendre le premier nombre du texte
+        # attrape le quantième de « No contributions on July 11th » : toutes les
+        # journées vides deviennent actives, le total explose et la série devient
+        # continue. C'est exactement ce qui s'est produit en production.
+        mn = re.match(r"\s*([\d\s\u00a0\u202f]+?)\s*contribution", texte)
+        out[jour] = int(re.sub(r"\D", "", mn.group(1))) if mn else 0
     if not out:
         raise RuntimeError("calendrier illisible")
     return out
@@ -131,13 +136,28 @@ def calendrier():
             if retenu is None:
                 retenu = obtenu
                 jours.update(obtenu)
-            else:
-                # diagnostic : mesure l'écart entre la grille du profil et UTC
-                ecarts = [k for k in set(retenu) | set(obtenu)
-                          if retenu.get(k, 0) != obtenu.get(k, 0)]
-                if ecarts:
-                    print("%d : %d jour(s) où GraphQL (UTC) diffère de la grille "
-                          "du profil, p. ex. %s" % (an, len(ecarts), sorted(ecarts)[-3:]))
+                continue
+            # Garde-fou. Les deux sources ne peuvent différer qu'à la marge : un
+            # décalage de fuseau déplace quelques contributions d'un jour, il ne
+            # change pas un total. Un écart massif dénonce une lecture cassée, et
+            # c'est bien ce qui est arrivé — un parseur trop permissif prenait le
+            # quantième des journées vides pour un nombre de contributions. On
+            # repart alors sur GraphQL, moins juste sur les fuseaux mais jamais
+            # absurde, plutôt que de publier n'importe quoi.
+            ta, tb = sum(retenu.values()), sum(obtenu.values())
+            if tb and not (0.8 <= ta / tb <= 1.25):
+                print("ALERTE %d : la grille du profil totalise %d, GraphQL %d. "
+                      "Écart hors de portée d'un fuseau horaire : lecture suspecte, "
+                      "GraphQL retenu." % (an, ta, tb))
+                for k in set(retenu) | set(obtenu):
+                    jours[k] = obtenu.get(k, 0)
+                retenu = obtenu
+                continue
+            ecarts = [k for k in set(retenu) | set(obtenu)
+                      if retenu.get(k, 0) != obtenu.get(k, 0)]
+            if ecarts:
+                print("%d : %d jour(s) où GraphQL (UTC) diffère de la grille du "
+                      "profil (fuseau), p. ex. %s" % (an, len(ecarts), sorted(ecarts)[-3:]))
         an += 1
     if not jours:
         raise SystemExit("échec de récupération, cartes inchangées :\n  " + "\n  ".join(erreurs))
