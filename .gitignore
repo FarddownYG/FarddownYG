@@ -1,0 +1,7 @@
+# Bytecode Python : produit à l'exécution des scripts de tools/
+__pycache__/
+*.py[cod]
+
+# Sortie locale du générateur de cartes ; en production l'Action publie
+# sur la branche « stats », rien ne doit atterrir ici.
+out/
