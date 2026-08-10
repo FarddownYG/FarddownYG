@@ -150,14 +150,13 @@ def records(jours):
         par_mois[k[:7]] = par_mois.get(k[:7], 0) + v
     meilleur_mois = max(par_mois, key=lambda k: par_mois[k])
 
-    premier = min(jours)
-    etendue = (date.today() - date.fromisoformat(premier)).days + 1
+    premier = min(actifs)
 
     return {
         "record": record,
         "record_date": date_record,
         "actifs": len(actifs),
-        "etendue": etendue,
+        "premier": premier,
         "moyenne": total / len(actifs),
         "mois": meilleur_mois,
         "mois_total": par_mois[meilleur_mois],
@@ -198,7 +197,7 @@ def esc(s):
 def carte(r, p):
     tuiles = [
         (fr(r["record"]), "Record en une journée", jour_fr(r["record_date"]), True),
-        (fr(r["actifs"]), "Jours actifs", "sur %s jours" % fr(r["etendue"]), False),
+        (fr(r["actifs"]), "Jours actifs", "depuis le %s" % jour_fr(r["premier"]), False),
         (("%.1f" % r["moyenne"]).replace(".", ","), "Par jour actif", "en moyenne", False),
         (fr(r["mois_total"]), "Meilleur mois", mois_fr(r["mois"]), False),
     ]
@@ -237,8 +236,8 @@ def main():
             os.makedirs(d, exist_ok=True)
         open(chemin, "w", encoding="utf-8").write(carte(r, pal))
         print("écrit :", chemin)
-    print("record %d le %s · %d jours actifs sur %d · %.1f/jour actif · meilleur mois %s (%d)"
-          % (r["record"], r["record_date"], r["actifs"], r["etendue"],
+    print("record %d le %s · %d jours actifs depuis %s · %.1f/jour actif · meilleur mois %s (%d)"
+          % (r["record"], r["record_date"], r["actifs"], r["premier"],
              r["moyenne"], r["mois"], r["mois_total"]))
 
 
