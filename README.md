@@ -37,6 +37,14 @@
 
 <div align="center">
   <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FarddownYG/FarddownYG/stats/records-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/FarddownYG/FarddownYG/stats/records-light.svg">
+    <img src="https://raw.githubusercontent.com/FarddownYG/FarddownYG/stats/records-dark.svg" alt="Records de contributions : record en une journée, jours actifs, moyenne par jour actif, meilleur mois" width="97%">
+  </picture>
+</div>
+
+<div align="center">
+  <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://github-readme-activity-graph.vercel.app/graph?username=FarddownYG&custom_title=Graphique%20des%20contributions&bg_color=0B0E13&color=9AA3B2&line=C8A96A&point=E8EAF0&area=true&area_color=C8A96A&hide_border=false&radius=10">
     <source media="(prefers-color-scheme: light)" srcset="https://github-readme-activity-graph.vercel.app/graph?username=FarddownYG&custom_title=Graphique%20des%20contributions&bg_color=FBF7EE&color=5F6672&line=B8934A&point=14171C&area=true&area_color=B8934A&hide_border=false&radius=10">
     <img src="https://github-readme-activity-graph.vercel.app/graph?username=FarddownYG&custom_title=Graphique%20des%20contributions&bg_color=0B0E13&color=9AA3B2&line=C8A96A&point=E8EAF0&area=true&area_color=C8A96A&hide_border=false&radius=10" alt="Graphique des contributions" width="97%">
