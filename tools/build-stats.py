@@ -60,7 +60,11 @@ def compte_cree_le():
 
 
 def via_graphql(debut, fin):
-    """Chemin principal : l'API GraphQL, exacte et stable."""
+    """Filet de sécurité. Attention : GraphQL découpe les journées en UTC,
+    alors que le calendrier du profil les découpe dans le fuseau du compte.
+    Une contribution faite en début de nuit locale bascule donc la veille en
+    UTC, ce qui peut créer un trou et casser une série. À n'utiliser que si
+    la page publique est illisible."""
     if not TOKEN:
         raise RuntimeError("pas de jeton")
     q = ("query($l:String!,$f:DateTime!,$t:DateTime!){user(login:$l){"
@@ -80,7 +84,9 @@ def via_graphql(debut, fin):
 
 
 def via_page(debut, fin):
-    """Filet de sécurité : la page publique du calendrier, sans authentification.
+    """Source principale : la page publique du calendrier, sans authentification.
+    C'est exactement la grille affichée sur le profil, donc les chiffres ne
+    peuvent pas diverger de ce que voit un visiteur — fuseau horaire compris.
     Deux formats de rendu coexistent selon les versions de GitHub, on gère
     les deux (data-count inline, ou <tool-tip> rattaché par identifiant)."""
     html = _get("https://github.com/users/%s/contributions?from=%s&to=%s"
@@ -115,12 +121,23 @@ def calendrier():
     while an <= aujourdhui.year:
         d = max(debut, date(an, 1, 1))
         f = min(aujourdhui, date(an, 12, 31))
-        for source in (via_graphql, via_page):
+        retenu = None
+        for source in (via_page, via_graphql):
             try:
-                jours.update(source(d, f))
-                break
+                obtenu = source(d, f)
             except Exception as e:
                 erreurs.append("%d/%s : %s" % (an, source.__name__, e))
+                continue
+            if retenu is None:
+                retenu = obtenu
+                jours.update(obtenu)
+            else:
+                # diagnostic : mesure l'écart entre la grille du profil et UTC
+                ecarts = [k for k in set(retenu) | set(obtenu)
+                          if retenu.get(k, 0) != obtenu.get(k, 0)]
+                if ecarts:
+                    print("%d : %d jour(s) où GraphQL (UTC) diffère de la grille "
+                          "du profil, p. ex. %s" % (an, len(ecarts), sorted(ecarts)[-3:]))
         an += 1
     if not jours:
         raise SystemExit("échec de récupération, cartes inchangées :\n  " + "\n  ".join(erreurs))
@@ -250,11 +267,11 @@ LIGHT = dict(bg="#FBF7EE", border="#D9D2C2", gold="#8C6E33", text="#14171C",
 SANS = "'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif"
 MONO = "'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace"
 
-SPADE = ("M100,8 C96,34 60,64 42,92 C28,114 26,132 34,148 C44,166 70,172 86,158 "
-         "C92,152 96,146 97,140 C95,172 86,196 68,212 C64,216 66,220 71,220 "
-         "L129,220 C134,220 136,216 132,212 C114,196 105,172 103,140 "
-         "C104,146 108,152 114,158 C130,172 156,166 166,148 C174,132 172,114 158,92 "
-         "C140,64 104,34 100,8 Z")
+# Flamme de la série en cours, dessinée dans une boîte de 18x18.
+# La langue de feu latérale est ce qui la rend lisible à petite taille.
+FLAMME = ("M9,0 C10.4,4 14.1,6.1 14.1,10.8 C14.1,14.8 11.8,17.6 9,17.6 "
+          "C6.2,17.6 3.9,14.8 3.9,10.8 C3.9,8 6.3,6.6 6.9,3.4 "
+          "C7.6,7 9.3,7.5 9.6,5.2 C9.9,3 8.4,1.8 9,0 Z")
 
 
 def esc(s):
@@ -301,8 +318,8 @@ def carte_serie(r, p):
     # tuile centrale : anneau + pique, la série en cours est le chiffre vivant
     o.append('  <circle cx="450" cy="108" r="32" fill="none" stroke="%s" stroke-width="3.5"/>'
              % p["gold"])
-    o.append('  <path d="%s" transform="translate(444,58) scale(0.055)" fill="%s"/>'
-             % (SPADE, p["gold"]))
+    o.append('  <path d="%s" transform="translate(437.9,48.6) scale(1.35)" fill="%s"/>'
+             % (FLAMME, p["gold"]))
     o.append('  <text x="450" y="120" text-anchor="middle" font-family="%s" font-size="34" '
              'font-weight="700" fill="%s">%s</text>' % (SANS, p["text"], fr(n)))
     o.append('  <text x="450" y="154" text-anchor="middle" font-family="%s" font-size="12" '
@@ -394,9 +411,10 @@ def main():
             chemin = os.path.join(dossier, "%s-%s.svg" % (nom, suffixe))
             open(chemin, "w", encoding="utf-8").write(rendu(r, pal))
             print("écrit :", chemin)
-    n = r["courante"][0]
-    print("total %d · série %d · plus longue %d · record %d le %s · %d jours actifs · %.1f/jour"
-          % (r["total"], n, r["longue"][0], r["record"], r["record_date"],
+    n, d1, d2 = r["courante"]
+    print("total %d · série %d (%s → %s) · plus longue %d · record %d le %s · "
+          "%d jours actifs · %.1f/jour"
+          % (r["total"], n, d1, d2, r["longue"][0], r["record"], r["record_date"],
              r["actifs"], r["moyenne"]))
 
 
