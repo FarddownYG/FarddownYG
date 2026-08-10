@@ -188,8 +188,16 @@ def stats(jours):
     meilleur_mois = max(par_mois, key=lambda k: par_mois[k])
     courante, longue = series(jours)
 
+    # Moyenne glissante sur 7 jours plutôt que valeurs brutes : une journée
+    # record à 254 contre des journées ordinaires à 5-15 écrase la courbe et
+    # la rend illisible. Le lissage garde la forme réelle de l'activité ; le
+    # record du jour, lui, a sa place sur la carte des records.
     fin = date.today()
-    fenetre = [(fin - timedelta(days=i), jours.get((fin - timedelta(days=i)).isoformat(), 0))
+
+    def moy7(d):
+        return sum(jours.get((d - timedelta(days=k)).isoformat(), 0) for k in range(7)) / 7.0
+
+    fenetre = [(fin - timedelta(days=i), moy7(fin - timedelta(days=i)))
                for i in range(FENETRE - 1, -1, -1)]
 
     return {
@@ -355,7 +363,8 @@ def carte_activite(r, p):
         o.append('  <circle cx="%.1f" cy="%.1f" r="3.5" fill="%s"/>' % (mx, my, p["text"]))
         o.append('  <text x="%.1f" y="%.1f" text-anchor="middle" font-family="%s" font-size="10.5" '
                  'fill="%s">%s</text>'
-                 % (min(max(mx, X0 + 20), X1 - 20), my - 11, MONO, p["text"], fr(pts[im][1])))
+                 % (min(max(mx, X0 + 20), X1 - 20), my - 11, MONO, p["text"],
+                    ("%.1f" % pts[im][1]).replace(".", ",")))
     # étiquettes de mois
     vus = set()
     for i, (d, _) in enumerate(pts):
@@ -364,7 +373,8 @@ def carte_activite(r, p):
             o.append('  <text x="%.1f" y="%d" text-anchor="middle" font-family="%s" font-size="10" '
                      'fill="%s">%s</text>' % (xy(i, 0)[0], Y1 + 22, MONO, p["dim"], ABBR[d.month - 1]))
     o.append('  <text x="%d" y="%d" text-anchor="end" font-family="%s" font-size="10.5" fill="%s">'
-             '%d derniers jours</text>' % (X1, Y1 + 46, MONO, p["muted"], len(pts)))
+             'moyenne glissante sur 7 jours · %d derniers jours</text>'
+             % (X1, Y1 + 46, MONO, p["muted"], len(pts)))
     o.append('</svg>')
     return "\n".join(o) + "\n"
 
