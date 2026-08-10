@@ -1,5 +1,5 @@
 <svg viewBox="0 0 1000 580" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hTitle">
-  <title id="hTitle">Yanis — l’as de pique : ingénieur cybersécurité, fondateur, développeur de jeux et de logiciels</title>
+  <title id="hTitle">Yanis — l’as de pique : ingénieur cybersécurité, fondateur de Classor (classor.fr), développeur de jeux et de logiciels</title>
 
   <defs>
     <!-- La pique-lame : tracé maître réutilisé (emblème, index de coins, pips) -->
@@ -174,7 +174,8 @@
 
     <text x="84.00" y="350" class="mono" font-size="13" clip-path="url(#type1)" fill="#C8A96A" textLength="7.75" lengthAdjust="spacingAndGlyphs">$</text>
     <text x="99.50" y="350" class="mono" font-size="13" clip-path="url(#type1)" fill="#E8EAF0" textLength="46.50" lengthAdjust="spacingAndGlyphs">whoami</text>
-    <text x="84.00" y="374" class="mono out" font-size="13" fill="#A3C2A8" textLength="271.25" lengthAdjust="spacingAndGlyphs" opacity="0">ingénieur cybersécurité · fondateur<animate attributeName="opacity" calcMode="discrete" dur="16s" repeatCount="1" fill="freeze" values="0;1.0;1.0" keyTimes="0;0.09062;1"/></text>
+    <text x="84.00" y="374" class="mono out" font-size="13" fill="#A3C2A8" textLength="372.00" lengthAdjust="spacingAndGlyphs" opacity="0">ingénieur cybersécurité · fondateur de Classor ·<animate attributeName="opacity" calcMode="discrete" dur="16s" repeatCount="1" fill="freeze" values="0;1.0;1.0" keyTimes="0;0.09062;1"/></text>
+    <text x="463.75" y="374" class="mono out" font-size="13" fill="#C8A96A" textLength="77.50" lengthAdjust="spacingAndGlyphs" opacity="0">classor.fr<animate attributeName="opacity" calcMode="discrete" dur="16s" repeatCount="1" fill="freeze" values="0;1.0;1.0" keyTimes="0;0.09062;1"/></text>
     <text x="84.00" y="398" class="mono" font-size="13" clip-path="url(#type2)" fill="#C8A96A" textLength="7.75" lengthAdjust="spacingAndGlyphs">$</text>
     <text x="99.50" y="398" class="mono" font-size="13" clip-path="url(#type2)" fill="#E8EAF0" textLength="77.50" lengthAdjust="spacingAndGlyphs">ls ~/build</text>
     <text x="84.00" y="422" class="mono out" font-size="13" fill="#A3C2A8" textLength="201.50" lengthAdjust="spacingAndGlyphs" opacity="0">jeux/  logiciels/  outils/<animate attributeName="opacity" calcMode="discrete" dur="16s" repeatCount="1" fill="freeze" values="0;1.0;1.0" keyTimes="0;0.19062;1"/></text>

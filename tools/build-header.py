@@ -18,7 +18,7 @@ SPADE = ("M100,8 C96,34 60,64 42,92 C28,114 26,132 34,148 C44,166 70,172 86,158 
 # (type, texte, texte secondaire éventuel)
 LINES = [
     ("cmd", "whoami"),
-    ("out", "ingénieur cybersécurité · fondateur"),
+    ("out", "ingénieur cybersécurité · fondateur de Classor ·", "classor.fr"),
     ("cmd", "ls ~/build"),
     ("out", "jeux/  logiciels/  outils/"),
     ("cmd", "cat ~/.origin"),
@@ -98,8 +98,8 @@ def build(p):
     a = o.append
     a('<svg viewBox="0 0 1000 580" fill="none" xmlns="http://www.w3.org/2000/svg" '
       'role="img" aria-labelledby="hTitle">')
-    a('  <title id="hTitle">Yanis — l’as de pique : ingénieur cybersécurité, fondateur, '
-      'développeur de jeux et de logiciels</title>')
+    a('  <title id="hTitle">Yanis — l’as de pique : ingénieur cybersécurité, fondateur de '
+      'Classor (classor.fr), développeur de jeux et de logiciels</title>')
     a('')
     a('  <defs>')
     a('    <!-- La pique-lame : tracé maître réutilisé (emblème, index de coins, pips) -->')
@@ -302,6 +302,12 @@ def build(p):
             a('    <text x="%.2f" y="%d" class="mono out" font-size="13" fill="%s" '
               'textLength="%.2f" lengthAdjust="spacingAndGlyphs" opacity="0">%s%s</text>'
               % (TX, y, T_OUT, len(ln[1]) * CELL, esc(ln[1]), reveal(STARTS[i])))
+            if len(ln) == 3:
+                # segment d'accent : même révélation, couleur de marque
+                a('    <text x="%.2f" y="%d" class="mono out" font-size="13" fill="%s" '
+                  'textLength="%.2f" lengthAdjust="spacingAndGlyphs" opacity="0">%s%s</text>'
+                  % (TX + (len(ln[1]) + 1) * CELL, y, T_PROMPT, len(ln[2]) * CELL,
+                     esc(ln[2]), reveal(STARTS[i])))
         else:
             creed, attr = ln[1], ln[2]
             cw = len(creed) * CELL
