@@ -91,6 +91,39 @@ verifie("la journée du lendemain UTC est conservée",
         "valeur : %s" % garde.get((fin + timedelta(days=1)).isoformat()))
 bs.compte_cree_le, bs.via_page, bs.via_graphql = _cree, _page, _gql
 
+# --- 2 ter. Cache des années révolues -----------------------------------------
+# Le mode boucle recalcule toutes les deux minutes. Les années closes ne
+# changent plus : les relire à chaque tour quadruplerait les appels à GitHub
+# sans rien apprendre. Mais l'année en cours, elle, doit être relue à chaque
+# fois — un cache trop gourmand figerait justement le chiffre du jour, soit
+# exactement le défaut qu'on cherche à corriger.
+print("Cache des années révolues")
+import tempfile
+
+appels = []
+_cree, _page, _gql, _cache_dir = bs.compte_cree_le, bs.via_page, bs.via_graphql, bs.CACHE
+with tempfile.TemporaryDirectory() as tmp:
+    bs.CACHE = tmp
+    bs.compte_cree_le = lambda: date(fin.year - 1, 3, 1)
+
+    def fausse_source(d, f):
+        appels.append(d.year)
+        return {(d + timedelta(days=i)).isoformat(): 2 for i in range((f - d).days + 1)}
+
+    bs.via_page = bs.via_graphql = fausse_source
+    premier = bs.calendrier()
+    annees_1 = sorted(set(appels))
+    appels.clear()
+    second = bs.calendrier()
+    annees_2 = sorted(set(appels))
+
+verifie("le premier passage lit les deux années", annees_1 == [fin.year - 1, fin.year],
+        "années lues : %s" % annees_1)
+verifie("le second ne relit que l'année en cours", annees_2 == [fin.year],
+        "années lues : %s" % annees_2)
+verifie("le cache ne change aucun chiffre", premier == second)
+bs.compte_cree_le, bs.via_page, bs.via_graphql, bs.CACHE = _cree, _page, _gql, _cache_dir
+
 # --- 3. Calcul des séries ----------------------------------------------------
 # La série en cours ne doit pas être cassée par une journée d'aujourd'hui encore
 # vide : elle n'est pas finie.

@@ -2,11 +2,13 @@
   ♠ Profil : as de pique.
   Animations : SVG pur (SMIL + CSS), zéro JavaScript — GitHub sanitize le markdown,
   seul ce chemin de rendu est fiable.
-  Statistiques : toutes calculées maison par tools/build-stats.py, exécuté chaque
-  heure par .github/workflows/records.yml et publié sur la branche « stats ».
+  Statistiques : toutes calculées maison par tools/build-stats.py, recalculées
+  toutes les deux minutes par .github/workflows/records.yml et publiées sur la
+  branche « stats » dès qu'un chiffre bouge.
   Plus aucun service tiers : les instances publiques gratuites tombent ou servent
   du cache, et on ne peut alors pas savoir si un chiffre est à jour. Chaque carte
   affiche l'heure de son calcul.
+  Fraîcheur et limite structurelle : voir claude.md.
 -->
 
 <div align="center">

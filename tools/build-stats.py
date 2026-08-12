@@ -33,6 +33,15 @@ LOGIN = os.environ.get("LOGIN") or "FarddownYG"
 TOKEN = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
 UA = "FarddownYG-profile-stats"
 
+# Dossier de cache des années révolues. Vide = pas de cache, c'est le défaut :
+# une exécution isolée relit tout. Le mode boucle le renseigne, car recalculer
+# les années closes toutes les deux minutes n'apporte rien et multiplie par
+# quatre le nombre d'appels à GitHub. Le cache est créé dans l'espace de
+# travail du job, donc jeté à chaque redémarrage : les années closes sont
+# relues au moins une fois par heure, ce qui rattrape d'éventuels commits
+# antidatés.
+CACHE = os.environ.get("CACHE_ANNEES") or ""
+
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin",
         "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
 ABBR = ["janv.", "févr.", "mars", "avr.", "mai", "juin",
@@ -117,6 +126,24 @@ def via_page(debut, fin):
     return out
 
 
+def _cache(an, jours=None):
+    """Lit (jours=None) ou écrit le cache d'une année. Silencieux : un cache
+    illisible ne doit jamais empêcher un calcul, il fait juste retomber sur le
+    réseau."""
+    if not CACHE or an >= date.today().year:
+        return None
+    chemin = os.path.join(CACHE, "%d.json" % an)
+    try:
+        if jours is None:
+            with open(chemin, encoding="utf-8") as f:
+                return json.load(f)
+        os.makedirs(CACHE, exist_ok=True)
+        with open(chemin, "w", encoding="utf-8") as f:
+            json.dump(jours, f)
+    except Exception:
+        return None
+
+
 def calendrier():
     """Toutes les journées depuis la création du compte, fusionnées par année.
     GitHub plafonne chaque requête à un an, d'où le découpage."""
@@ -124,6 +151,11 @@ def calendrier():
     jours, erreurs = {}, []
     an = debut.year
     while an <= aujourdhui.year:
+        en_cache = _cache(an)
+        if en_cache:
+            jours.update(en_cache)
+            an += 1
+            continue
         d = max(debut, date(an, 1, 1))
         f = min(aujourdhui, date(an, 12, 31))
         retenu = None
@@ -158,6 +190,9 @@ def calendrier():
             if ecarts:
                 print("%d : %d jour(s) où GraphQL (UTC) diffère de la grille du "
                       "profil (fuseau), p. ex. %s" % (an, len(ecarts), sorted(ecarts)[-3:]))
+        if retenu is not None:
+            prefixe = "%d-" % an
+            _cache(an, {k: v for k, v in jours.items() if k.startswith(prefixe)})
         an += 1
     if not jours:
         raise SystemExit("échec de récupération, cartes inchangées :\n  " + "\n  ".join(erreurs))
