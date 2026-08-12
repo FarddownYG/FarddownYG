@@ -76,21 +76,24 @@ Mesures faites le 12 août 2026 sur ce dépôt.
 | fraîcheur de la source lue | **grille publique gelée > 2 h**, GraphQL à jour | oui — seconde cause, corrigée |
 | détection d'un changement | 120 s (période de la boucle) | oui, `PERIODE` |
 | calcul des trois cartes + publication | ~1,5 s | oui |
-| propagation sur `raw.githubusercontent.com` | ~40 s après le push | non, mais suffisamment rapide |
-| `raw.githubusercontent.com` | `cache-control: max-age=300` (5 min) | non, imposé par GitHub |
+| propagation sur `raw.githubusercontent.com` | de 40 s à 300 s selon le nœud de cache | non, imposé par GitHub |
 | proxy d'images Camo | **absent du trajet** | sans objet |
 | cache navigateur | découle du `max-age=300` ci-dessus | non |
 
-La propagation a été chronométrée : publication à 09:03:35, l'URL nue servait
-encore l'ancienne image à 09:04:00 et la nouvelle à 09:04:12. GitHub purge donc
-son CDN au push ; le `max-age=300` ne pèse que sur un navigateur qui a déjà
-l'image en cache, pas sur une visite fraîche.
+Deux chronométrages, et il faut les lire ensemble : une publication à 09:03:35
+était servie dès 09:04:12, mais une autre à 11:11 n'est apparue qu'à 11:16:39 —
+soit exactement les 300 s de `max-age`. L'explication est dans l'en-tête
+`x-served-by`, qui change d'une requête à l'autre : les requêtes n'atterrissent
+pas sur le même nœud de cache, et chacun a son propre état. Selon celui qu'on
+touche et depuis quand il a l'objet, une visite voit la nouvelle carte tout de
+suite ou jusqu'à cinq minutes plus tard. C'est le plancher de GitHub, pas le
+nôtre.
 
-**Le cache-busting est sans objet, deux fois.** D'abord parce que `raw` se purge
-au push, donc il n'y a rien à contourner. Ensuite et surtout parce qu'un README
-est du texte fixe : il n'existe aucun moyen d'y faire varier une URL d'une
-visite à l'autre. Un `?v=` écrit dans le markdown est une constante, pas un
-anti-cache.
+**Le cache-busting ne s'applique pas ici.** Non pas parce qu'il serait interdit,
+mais parce qu'un README est du texte fixe : il n'existe aucun moyen d'y faire
+varier une URL d'une visite à l'autre. Un `?v=` écrit dans le markdown est une
+constante, donc une clé de cache constante — pas un anti-cache. Rien à gagner
+de ce côté.
 
 **Camo n'intervient pas.** C'était l'hypothèse la plus naturelle, elle est
 fausse ici : dans le HTML rendu du README, les URL
@@ -100,12 +103,39 @@ chemins relatifs deviennent `/FarddownYG/FarddownYG/raw/main/...`. Aucune URL
 ne sont pas les siens. Inutile donc de chercher à purger Camo ou à contourner
 son cache : il n'est pas là.
 
-**La cause était le planificateur.** Le workflow demandait `*/10`, six
+**Première cause : le planificateur.** Le workflow demandait `*/10`, six
 exécutions par heure. Sur 21 exécutions planifiées consécutives, GitHub en a
 lancé une par heure. Les déclenchements `schedule` ne sont pas garantis et les
 créneaux rapprochés sont abandonnés en période de charge ; le plancher
 documenté de 5 minutes est une limite d'écriture, pas une promesse d'exécution.
 Un cron plus serré n'y change rien — c'est la même file d'attente.
+
+**Seconde cause : la source lue.** Une fois la cadence corrigée, le chiffre ne
+bougeait toujours pas — parce qu'on interrogeait une grille périmée. Détail plus
+bas, section « Le calcul lui-même ».
+
+## Le délai obtenu, mesuré
+
+Protocole : une vraie contribution créée à un instant connu, puis relevé de deux
+étages séparément — l'arrivée sur la branche `stats` (vérité de l'origine) et
+l'affichage sur une visite (CDN compris).
+
+| instant | événement | écart depuis la contribution |
+|---|---|---|
+| 11:17:19 | contribution créée | — |
+| 11:17:30 | publication sur la branche `stats` | +11 s |
+| 11:19:34 | publication suivante, chiffre à jour | +2 min 15 s |
+| 11:21:41 | **visible sur une visite fraîche** | **+4 min 22 s** |
+
+Décomposition : la détection coûte au plus une période de boucle (120 s, ici
+11 s par chance), le calcul et la publication 2 s, et le reste — un peu plus de
+deux minutes ce jour-là — est le cache de `raw.githubusercontent.com`, qui
+n'appartient pas à ce dépôt.
+
+**Ordre de grandeur à retenir : deux à sept minutes**, selon l'endroit où l'on
+tombe dans la période de boucle et dans le cache CDN. Avant correction, la même
+mesure n'avait jamais abouti : trois contributions créées à 08h36, 08h41 et
+09h05 n'apparaissaient toujours pas à 11h05.
 
 ## Comment la fraîcheur est tenue
 
