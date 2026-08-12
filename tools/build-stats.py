@@ -188,8 +188,16 @@ def calendrier():
             ecarts = [k for k in set(retenu) | set(obtenu)
                       if retenu.get(k, 0) != obtenu.get(k, 0)]
             if ecarts:
+                # Les valeurs des deux sources, pas seulement les dates : c'est
+                # ce qui permet de dire si un chiffre manquant vient de notre
+                # cadence ou du retard de GitHub à publier sa propre grille.
+                detail = " · ".join(
+                    "%s grille=%d GraphQL=%d" % (k, retenu.get(k, 0), obtenu.get(k, 0))
+                    for k in sorted(ecarts)[-3:])
                 print("%d : %d jour(s) où GraphQL (UTC) diffère de la grille du "
-                      "profil (fuseau), p. ex. %s" % (an, len(ecarts), sorted(ecarts)[-3:]))
+                      "profil (fuseau) — %s" % (an, len(ecarts), detail))
+                print("%d : totaux par source — grille=%d GraphQL=%d"
+                      % (an, sum(retenu.values()), sum(obtenu.values())))
         if retenu is not None:
             prefixe = "%d-" % an
             _cache(an, {k: v for k, v in jours.items() if k.startswith(prefixe)})

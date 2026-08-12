@@ -27,18 +27,31 @@ depart=$(date +%s)
 empreinte=""
 publie=0
 
+# Une publication ratée ne doit jamais tuer la boucle : le run mourrait, et la
+# fraîcheur retomberait sur la planification — c'est-à-dire sur le défaut qu'on
+# vient de corriger. On réessaie, puis on rend la main à la boucle, qui
+# retentera au tour suivant puisque l'empreinte publiée n'aura pas bougé.
 publier() {
-  (
-    cd out
-    git init -q -b stats
-    git config user.name "github-actions[bot]"
-    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-    git add -A
-    git commit -q -m "Statistiques au $(date -u '+%Y-%m-%d %H:%M UTC')"
-    git push -q --force \
-      "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-      stats:refs/heads/stats
-  )
+  local essai
+  for essai in 1 2 3; do
+    rm -rf out/.git
+    if (
+      cd out
+      git init -q -b stats
+      git config user.name "github-actions[bot]"
+      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      git add -A
+      git commit -q -m "Statistiques au $(date -u '+%Y-%m-%d %H:%M UTC')"
+      git push -q --force \
+        "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+        stats:refs/heads/stats
+    ); then
+      return 0
+    fi
+    echo "== publication en échec (essai $essai/3)"
+    sleep 10
+  done
+  return 1
 }
 
 while :; do
@@ -58,16 +71,21 @@ while :; do
     continue
   fi
 
-  nouvelle=$(python tools/empreinte.py out)
+  if ! nouvelle=$(python tools/empreinte.py out); then
+    echo "== empreinte illisible, on republie par prudence"
+    nouvelle="?"
+  fi
+
   if [ "$nouvelle" = "$empreinte" ] && [ $(( maintenant - publie )) -lt "$BATTEMENT" ]; then
     echo "== aucun chiffre modifié ($nouvelle), prochain contrôle dans ${PERIODE}s"
-  else
-    publier
+  elif publier; then
     [ "$nouvelle" = "$empreinte" ] \
       && echo "== battement : republication pour rafraîchir l'horodatage" \
       || echo "== chiffres modifiés ($empreinte -> $nouvelle), publié"
     empreinte=$nouvelle
     publie=$maintenant
+  else
+    echo "== publication impossible, empreinte inchangée : nouvel essai au tour suivant"
   fi
 
   sleep "$(( PERIODE < reste ? PERIODE : reste ))"
