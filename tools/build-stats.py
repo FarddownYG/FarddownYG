@@ -196,8 +196,28 @@ def calendrier():
                     for k in sorted(ecarts)[-3:])
                 print("%d : %d jour(s) où GraphQL (UTC) diffère de la grille du "
                       "profil (fuseau) — %s" % (an, len(ecarts), detail))
-                print("%d : totaux par source — grille=%d GraphQL=%d"
-                      % (an, sum(retenu.values()), sum(obtenu.values())))
+                print("%d : totaux par source — grille=%d GraphQL=%d" % (an, ta, tb))
+            # La source la plus avancée gagne. Les deux ne peuvent différer que
+            # de deux façons : un décalage de fuseau, qui déplace des
+            # contributions d'un jour sans changer un total, ou un retard de
+            # publication. Un total supérieur ne peut donc venir que du second
+            # cas — et il a été observé : la grille servie par GitHub est restée
+            # figée plus de deux heures (81 contributions ce jour-là) pendant
+            # que GraphQL en comptait 93. Le garde-fou ci-dessus étant passé,
+            # l'écart est modéré : c'est un retard, pas une lecture cassée.
+            #
+            # À égalité on garde la grille, qui date les journées dans le fuseau
+            # du compte — exactement comme le graphe du profil.
+            if tb > ta:
+                print("%d : la grille du profil est en retard sur GraphQL "
+                      "(%d contre %d) ; GraphQL retenu." % (an, ta, tb))
+                for k in set(retenu) | set(obtenu):
+                    # Une journée que GraphQL ne couvre pas encore — le
+                    # lendemain de l'UTC, déjà commencé dans le fuseau du
+                    # compte — garde la valeur de la grille : la jeter
+                    # amputerait la série d'un jour, panne déjà survenue.
+                    jours[k] = obtenu.get(k, retenu.get(k, 0))
+                retenu = obtenu
         if retenu is not None:
             prefixe = "%d-" % an
             _cache(an, {k: v for k, v in jours.items() if k.startswith(prefixe)})

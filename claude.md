@@ -72,11 +72,25 @@ Mesures faites le 12 août 2026 sur ce dépôt.
 
 | couche | valeur mesurée | maîtrisable ? |
 |---|---|---|
-| déclenchement planifié (`schedule`) | **écart médian 57 min, jusqu'à 90** | non — c'était la cause |
-| calcul + publication | 14 s | oui |
+| déclenchement planifié (`schedule`) | **écart médian 57 min, jusqu'à 90** | non — première cause, contournée |
+| fraîcheur de la source lue | **grille publique gelée > 2 h**, GraphQL à jour | oui — seconde cause, corrigée |
+| détection d'un changement | 120 s (période de la boucle) | oui, `PERIODE` |
+| calcul des trois cartes + publication | ~1,5 s | oui |
+| propagation sur `raw.githubusercontent.com` | ~40 s après le push | non, mais suffisamment rapide |
 | `raw.githubusercontent.com` | `cache-control: max-age=300` (5 min) | non, imposé par GitHub |
 | proxy d'images Camo | **absent du trajet** | sans objet |
 | cache navigateur | découle du `max-age=300` ci-dessus | non |
+
+La propagation a été chronométrée : publication à 09:03:35, l'URL nue servait
+encore l'ancienne image à 09:04:00 et la nouvelle à 09:04:12. GitHub purge donc
+son CDN au push ; le `max-age=300` ne pèse que sur un navigateur qui a déjà
+l'image en cache, pas sur une visite fraîche.
+
+**Le cache-busting est sans objet, deux fois.** D'abord parce que `raw` se purge
+au push, donc il n'y a rien à contourner. Ensuite et surtout parce qu'un README
+est du texte fixe : il n'existe aucun moyen d'y faire varier une URL d'une
+visite à l'autre. Un `?v=` écrit dans le markdown est une constante, pas un
+anti-cache.
 
 **Camo n'intervient pas.** C'était l'hypothèse la plus naturelle, elle est
 fausse ici : dans le HTML rendu du README, les URL
@@ -147,9 +161,19 @@ un service qui tombe, et le profil affiche des images cassées.
    (navigateur, cache local) : recharger en forçant.
 2. **La dernière exécution du workflow.** Onglet Actions. Si aucune boucle ne
    tourne, la relancer à la main (`workflow_dispatch`).
-3. **Le journal du run.** Il imprime à chaque tour les dernières journées lues
-   et les totaux calculés, ainsi que les écarts entre les deux sources. Un
-   chiffre faux se diagnostique là, sans deviner.
+3. **Le journal du run.** Il imprime à chaque tour les dernières journées lues,
+   les totaux calculés, et surtout **la valeur vue par chacune des deux
+   sources** :
+
+   ```
+   2026 : 1 jour(s) où GraphQL (UTC) diffère de la grille du profil (fuseau)
+          — 2026-08-12 grille=81 GraphQL=93
+   2026 : totaux par source — grille=1706 GraphQL=1718
+   ```
+
+   C'est la ligne qui dit si un chiffre manque parce qu'on ne regarde pas assez
+   souvent, ou parce que GitHub n'a pas encore publié le sien. Elle a servi
+   exactement à cela.
 4. **Les cinq minutes de `max-age`.** Deux visites à moins de cinq minutes
    d'intervalle peuvent afficher la même image. C'est le comportement attendu.
 
@@ -160,15 +184,22 @@ Deux sources, dans cet ordre :
 - **la grille publique du profil** (`github.com/users/<login>/contributions`),
   sans authentification. C'est exactement ce que GitHub affiche, datée dans le
   fuseau du compte ;
-- **GraphQL `contributionsCollection`**, en filet. Il découpe les journées en
-  UTC, ce qui peut décaler une contribution d'un jour et casser une série : à
-  n'utiliser que si la première source échoue ou paraît aberrante.
+- **GraphQL `contributionsCollection`**, authentifié. Il découpe les journées en
+  UTC, ce qui peut décaler une contribution d'un jour.
 
-Un garde-fou compare les deux : un décalage de fuseau déplace quelques
-contributions, il ne change pas un total. Un écart de plus de 25 % dénonce une
-lecture cassée et fait retenir GraphQL.
+Les deux sont lues à chaque tour, puis départagées en deux temps :
 
-Deux pannes déjà survenues, toutes deux couvertes par un test :
+1. **Garde-fou.** Un décalage de fuseau déplace quelques contributions, il ne
+   change pas un total. Un écart de plus de 25 % dénonce une lecture cassée et
+   fait retenir GraphQL sans discussion.
+2. **La source la plus avancée gagne.** L'écart étant modéré, il ne peut venir
+   que d'un retard de publication : le total le plus élevé désigne la source à
+   jour. À égalité on garde la grille, qui date les journées dans le fuseau du
+   compte, exactement comme le graphe du profil. Les journées que GraphQL ne
+   couvre pas encore — le lendemain de l'UTC, déjà commencé dans le fuseau du
+   compte — gardent la valeur de la grille.
+
+Trois pannes déjà survenues, toutes couvertes par un test :
 
 - **un parseur trop permissif** cherchait le nombre n'importe où dans
   l'infobulle et lisait le quantième dans « No contributions on July 11th ».
@@ -179,7 +210,14 @@ Deux pannes déjà survenues, toutes deux couvertes par un test :
   contient déjà le lendemain parisien. Le filtre final coupait à « aujourd'hui
   en UTC » et supprimait cette journée juste après être allé la chercher — la
   série affichait 30 au lieu de 31. La limite tolère maintenant un jour
-  au-delà, ce qui couvre n'importe quel fuseau de UTC-12 à UTC+14.
+  au-delà, ce qui couvre n'importe quel fuseau de UTC-12 à UTC+14 ;
+- **la grille publique de GitHub gelait sur la journée en cours.** Le 12 août,
+  elle a servi 81 contributions pendant plus de deux heures — total 1 706 —
+  pendant que GraphQL en comptait 93, total 1 718, l'écart portant entièrement
+  sur la journée du jour. Trois contributions créées pour tester n'apparaissaient
+  donc jamais, alors que la boucle recalculait bien toutes les deux minutes. Ce
+  n'était pas une question de cadence : on interrogeait une source périmée.
+  D'où la règle « la source la plus avancée gagne ».
 
 ## À savoir sur le rendu SVG
 
