@@ -72,6 +72,33 @@ verifie("une lecture aberrante est rejetée au profit de GraphQL",
 bs.via_page = lambda d, f: dict(decale)
 verifie("un simple décalage de fuseau est accepté",
         sum(bs.calendrier().values()) == sum(decale.values()))
+
+# Panne survenue : la grille publique servie par GitHub est restée figée plus de
+# deux heures sur la journée en cours (81 contributions) pendant que GraphQL en
+# comptait 93. Les deux sources ne peuvent différer que par un décalage de
+# fuseau, qui ne change pas un total, ou par un retard de publication : un total
+# supérieur désigne donc la source la plus avancée, et c'est elle qui doit
+# gagner. Sinon le chiffre du jour ne bouge plus, quelle que soit la cadence.
+actif = (fin - timedelta(days=1)).isoformat()
+avance = dict(sain)
+avance[actif] = sain[actif] + 12
+bs.via_page = lambda d, f: dict(sain)
+bs.via_graphql = lambda d, f: dict(avance)
+verifie("une grille en retard cède la place à GraphQL",
+        sum(bs.calendrier().values()) == sum(avance.values()),
+        "total retenu : %d" % sum(bs.calendrier().values()))
+
+# ... sans pour autant jeter la journée que GraphQL ne couvre pas encore : à
+# 23 h UTC le lendemain a déjà commencé dans le fuseau du compte, la grille le
+# connaît, GraphQL non. La jeter amputerait la série d'un jour.
+demain = (fin + timedelta(days=1)).isoformat()
+grille_avec_demain = dict(sain)
+grille_avec_demain[demain] = 7
+bs.via_page = lambda d, f: dict(grille_avec_demain)
+bs.via_graphql = lambda d, f: dict(avance)
+obtenu_demain = bs.calendrier().get(demain)
+verifie("la journée que GraphQL ne couvre pas encore est conservée",
+        obtenu_demain == 7, "valeur : %s" % obtenu_demain)
 bs.compte_cree_le, bs.via_page, bs.via_graphql = _cree, _page, _gql
 
 # --- 2 bis. La journée en avance sur l'UTC ne doit pas être jetée -------------
