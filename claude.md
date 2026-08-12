@@ -72,11 +72,24 @@ Mesures faites le 12 août 2026 sur ce dépôt.
 
 | couche | valeur mesurée | maîtrisable ? |
 |---|---|---|
-| déclenchement planifié (`schedule`) | **écart médian 57 min, jusqu'à 90** | non — c'était la cause |
-| calcul + publication | 14 s | oui |
+| déclenchement planifié (`schedule`) | **écart médian 57 min, jusqu'à 90** | non — c'était la cause, contournée |
+| détection d'un changement | 120 s (période de la boucle) | oui, `PERIODE` |
+| calcul des trois cartes + publication | ~1,5 s | oui |
+| propagation sur `raw.githubusercontent.com` | ~40 s après le push | non, mais suffisamment rapide |
 | `raw.githubusercontent.com` | `cache-control: max-age=300` (5 min) | non, imposé par GitHub |
 | proxy d'images Camo | **absent du trajet** | sans objet |
 | cache navigateur | découle du `max-age=300` ci-dessus | non |
+
+La propagation a été chronométrée : publication à 09:03:35, l'URL nue servait
+encore l'ancienne image à 09:04:00 et la nouvelle à 09:04:12. GitHub purge donc
+son CDN au push ; le `max-age=300` ne pèse que sur un navigateur qui a déjà
+l'image en cache, pas sur une visite fraîche.
+
+**Le cache-busting est sans objet, deux fois.** D'abord parce que `raw` se purge
+au push, donc il n'y a rien à contourner. Ensuite et surtout parce qu'un README
+est du texte fixe : il n'existe aucun moyen d'y faire varier une URL d'une
+visite à l'autre. Un `?v=` écrit dans le markdown est une constante, pas un
+anti-cache.
 
 **Camo n'intervient pas.** C'était l'hypothèse la plus naturelle, elle est
 fausse ici : dans le HTML rendu du README, les URL
