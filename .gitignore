@@ -5,3 +5,6 @@ __pycache__/
 # Sortie locale du générateur de cartes ; en production l'Action publie
 # sur la branche « stats », rien ne doit atterrir ici.
 out/
+
+# Cache des années de contributions déjà closes, écrit par le mode boucle.
+.cache-annees/

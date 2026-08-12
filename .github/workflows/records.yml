@@ -3,12 +3,13 @@ name: Statistiques du profil
 # Recalcule toutes les cartes de statistiques à partir du calendrier de
 # contributions, et les publie sur la branche « stats ».
 #
-# Toutes les dix minutes. GitHub ne propose pas de déclencheur sur « une
-# contribution a eu lieu » — un dépôt ne peut pas être notifié de l'activité
-# de son propriétaire ailleurs. Le plus proche du temps réel est donc une
-# interrogation rapprochée ; le plancher imposé par GitHub est de 5 minutes,
-# on reste juste au-dessus. Chaque carte porte l'heure de son calcul, la
-# fraîcheur est donc vérifiable d'un coup d'œil.
+# La planification ne sert plus à cadencer les calculs, seulement à s'assurer
+# qu'une exécution est vivante : GitHub n'honore pas les créneaux rapprochés.
+# Mesuré sur ce dépôt, « */10 » (six par heure) donnait une exécution par heure,
+# avec jusqu'à 90 minutes de trou — c'était toute la latence constatée sur le
+# profil. La cadence réelle est donc tenue par tools/boucle-stats.sh, qui
+# recalcule toutes les deux minutes pendant toute la durée du run et ne publie
+# que lorsqu'un chiffre a bougé.
 #
 # Pourquoi une branche séparée plutôt que main : GitHub ne compte dans le
 # graphe de contributions que les commits de la branche par défaut et de
@@ -23,12 +24,16 @@ on:
     branches: [main]
     paths:
       - tools/build-stats.py
+      - tools/boucle-stats.sh
+      - tools/empreinte.py
       - tools/test-stats.py
       - .github/workflows/records.yml
 
 permissions:
   contents: write
 
+# Une seule boucle vivante à la fois : chaque nouveau déclenchement remplace la
+# précédente. C'est aussi ce qui redémarre la chaîne si un run meurt.
 concurrency:
   group: stats
   cancel-in-progress: true
@@ -36,6 +41,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
 
@@ -46,23 +52,8 @@ jobs:
       - name: Vérifier le calcul avant de publier
         run: python tools/test-stats.py
 
-      - name: Générer les cartes
+      - name: Recalculer en boucle et publier à chaque changement
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LOGIN: ${{ github.repository_owner }}
-        run: python tools/build-stats.py out
-
-      - name: Publier sur la branche stats
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          cd out
-          git init -q -b stats
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "Statistiques au $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git push -q --force \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            stats:refs/heads/stats
+        run: bash tools/boucle-stats.sh
