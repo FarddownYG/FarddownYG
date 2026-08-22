@@ -1,0 +1,20 @@
+<svg viewBox="0 0 900 200" width="900" height="200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Records">
+  <rect x="0.7" y="0.7" width="898.6" height="198.6" rx="10" fill="#0B0E13" stroke="#2A3140" stroke-width="1.4"/>
+  <text x="28" y="40" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="11" letter-spacing="3" fill="#C8A96A">// RECORDS</text>
+  <text x="872" y="40" text-anchor="end" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#6B7280">mis à jour le 22 août 2026 à 18h13 UTC</text>
+  <text x="130.5" y="128" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="42" font-weight="700" fill="#C8A96A">254</text>
+  <text x="130.5" y="154" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="12" fill="#9AA3B2">Record en une journée</text>
+  <text x="130.5" y="174" text-anchor="middle" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#6B7280">15 juin 2026</text>
+  <path d="M237,84 V178" stroke="#2A3140" stroke-width="1" opacity="0.75"/>
+  <text x="343.5" y="128" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="42" font-weight="700" fill="#E8EAF0">125</text>
+  <text x="343.5" y="154" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="12" fill="#9AA3B2">Jours actifs</text>
+  <text x="343.5" y="174" text-anchor="middle" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#6B7280">depuis le 8 janv. 2026</text>
+  <path d="M450,84 V178" stroke="#2A3140" stroke-width="1" opacity="0.75"/>
+  <text x="556.5" y="128" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="42" font-weight="700" fill="#E8EAF0">14,2</text>
+  <text x="556.5" y="154" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="12" fill="#9AA3B2">Par jour actif</text>
+  <text x="556.5" y="174" text-anchor="middle" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#6B7280">en moyenne</text>
+  <path d="M663,84 V178" stroke="#2A3140" stroke-width="1" opacity="0.75"/>
+  <text x="769.5" y="128" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="42" font-weight="700" fill="#E8EAF0">565</text>
+  <text x="769.5" y="154" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="12" fill="#9AA3B2">Meilleur mois</text>
+  <text x="769.5" y="174" text-anchor="middle" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#6B7280">juin 2026</text>
+</svg>

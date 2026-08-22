@@ -1,0 +1,18 @@
+<svg viewBox="0 0 900 200" width="900" height="200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Série">
+  <rect x="0.7" y="0.7" width="898.6" height="198.6" rx="10" fill="#FBF7EE" stroke="#D9D2C2" stroke-width="1.4"/>
+  <text x="28" y="40" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="11" letter-spacing="3" fill="#8C6E33">// SÉRIE</text>
+  <text x="872" y="40" text-anchor="end" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10" fill="#8B857A">mis à jour le 22 août 2026 à 18h13 UTC</text>
+  <text x="150" y="128" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="42" font-weight="700" fill="#14171C">1 779</text>
+  <text x="150" y="154" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="12" fill="#5F6672">Contributions totales</text>
+  <text x="150" y="174" text-anchor="middle" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8B857A">depuis le 8 janv. 2026</text>
+  <text x="750" y="128" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="42" font-weight="700" fill="#14171C">33</text>
+  <text x="750" y="154" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="12" fill="#5F6672">Plus longue série</text>
+  <text x="750" y="174" text-anchor="middle" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8B857A">12 juil. – 13 août</text>
+  <path d="M300,84 V178" stroke="#E2DACA" stroke-width="1" opacity="0.75"/>
+  <path d="M600,84 V178" stroke="#E2DACA" stroke-width="1" opacity="0.75"/>
+  <circle cx="450" cy="108" r="32" fill="none" stroke="#8C6E33" stroke-width="3.5"/>
+  <path d="M9,0 C10.4,4 14.1,6.1 14.1,10.8 C14.1,14.8 11.8,17.6 9,17.6 C6.2,17.6 3.9,14.8 3.9,10.8 C3.9,8 6.3,6.6 6.9,3.4 C7.6,7 9.3,7.5 9.6,5.2 C9.9,3 8.4,1.8 9,0 Z" transform="translate(437.9,48.6) scale(1.35)" fill="#8C6E33"/>
+  <text x="450" y="120" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="34" font-weight="700" fill="#14171C">4</text>
+  <text x="450" y="154" text-anchor="middle" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="12" fill="#8C6E33">Série actuelle</text>
+  <text x="450" y="174" text-anchor="middle" font-family="'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="10.5" fill="#8B857A">19 août – 22 août</text>
+</svg>
