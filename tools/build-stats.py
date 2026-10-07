@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Calcule toutes les statistiques du profil et en fait des cartes SVG.
 
-Trois cartes, deux thèmes chacune, toutes issues d'UNE seule lecture du
+Deux cartes, deux thèmes chacune, toutes issues d'UNE seule lecture du
 calendrier de contributions public de GitHub :
 
-    serie      contributions totales · série actuelle · plus longue série
-    records    record en une journée · jours actifs · moyenne · meilleur mois
-    activite   graphique des 90 derniers jours
+    skyline    l'année en relief, un cube par jour ; dans les coins : total,
+               record en une journée, plus longue série, série actuelle
+    records    meilleure semaine · jours actifs · moyenne · meilleur mois
 
 Aucun service tiers : les instances publiques gratuites tombent ou servent
 du cache, et rien ne permet alors de savoir si un chiffre est à jour. Ici
@@ -48,7 +48,6 @@ MOIS = ["janvier", "février", "mars", "avril", "mai", "juin",
 ABBR = ["janv.", "févr.", "mars", "avr.", "mai", "juin",
         "juil.", "août", "sept.", "oct.", "nov.", "déc."]
 NNBSP = " "  # espace fine insécable : séparateur de milliers français
-FENETRE = 90      # jours affichés par le graphique d'activité
 
 
 # ---------------------------------------------------------------- récupération
@@ -222,6 +221,14 @@ def calendrier():
         if retenu is not None:
             prefixe = "%d-" % an
             _cache(an, {k: v for k, v in jours.items() if k.startswith(prefixe)})
+        elif an == aujourdhui.year:
+            # L'année en cours est la seule qui compte pour la fraîcheur. Si les
+            # deux sources ont échoué sur elle mais que les années closes
+            # viennent du cache, `jours` n'est pas vide : sans cet arrêt, on
+            # publierait un total amputé de l'année et un skyline arrêté au 31
+            # décembre précédent, présenté comme « les 12 derniers mois ».
+            raise SystemExit("année %d illisible, cartes inchangées :\n  %s"
+                             % (an, "\n  ".join(erreurs)))
         an += 1
     if not jours:
         raise SystemExit("échec de récupération, cartes inchangées :\n  " + "\n  ".join(erreurs))
@@ -308,18 +315,6 @@ def stats(jours):
     meilleur_mois = max(par_mois, key=lambda k: par_mois[k])
     courante, longue = series(jours)
 
-    # Moyenne glissante sur 7 jours plutôt que valeurs brutes : une journée
-    # record à 254 contre des journées ordinaires à 5-15 écrase la courbe et
-    # la rend illisible. Le lissage garde la forme réelle de l'activité ; le
-    # record du jour, lui, a sa place sur la carte des records.
-    fin = date.today()
-
-    def moy7(d):
-        return sum(jours.get((d - timedelta(days=k)).isoformat(), 0) for k in range(7)) / 7.0
-
-    fenetre = [(fin - timedelta(days=i), moy7(fin - timedelta(days=i)))
-               for i in range(FENETRE - 1, -1, -1)]
-
     # Meilleure semaine : sept jours consécutifs, en fenêtre glissante plutôt
     # qu'en semaines du calendrier — une semaine record à cheval sur deux
     # semaines civiles ne doit pas être coupée en deux.
@@ -348,7 +343,6 @@ def stats(jours):
         "mois_total": par_mois[meilleur_mois],
         "courante": courante,
         "longue": longue,
-        "fenetre": fenetre,
         "calcule": datetime.now(timezone.utc),
     }
 
@@ -365,6 +359,17 @@ def jour_fr(iso):
 def court(iso):
     d = _jour(iso)
     return "%d %s" % (d.day, ABBR[d.month - 1])
+
+
+def periode(d1, d2, ref):
+    """« 12 juil. – 13 août », avec l'année dès que la période sort de l'année
+    de `ref` (la dernière journée connue). Sans elle, une série de l'an passé
+    se lirait comme tombant dans la frise des douze derniers mois, qui porte
+    les mêmes noms de mois."""
+    a, b = _jour(d1), _jour(d2)
+    fin = jour_fr(d2) if b.year != _jour(ref).year else court(d2)
+    debut = jour_fr(d1) if a.year != b.year else court(d1)
+    return "%s – %s" % (debut, fin)
 
 
 def mois_fr(iso):
@@ -424,37 +429,11 @@ def tuile(cx, val, lab, det, p, phare=False, y=128):
     ]
 
 
-def carte_serie(r, p):
-    n, d1, d2 = r["courante"]
-    ln, l1, l2 = r["longue"]
-    o = cadre(900, 200, "Série", p, r)
-    # tuile de gauche et de droite
-    o += tuile(150, fr(r["total"]), "Contributions totales",
-               "depuis le %s" % jour_fr(r["premier"]), p)
-    o += tuile(750, fr(ln), "Plus longue série",
-               "%s – %s" % (court(l1), court(l2)) if ln else "—", p)
-    o.append('  <path d="M300,84 V178" stroke="%s" stroke-width="1" opacity="0.75"/>' % p["rule"])
-    o.append('  <path d="M600,84 V178" stroke="%s" stroke-width="1" opacity="0.75"/>' % p["rule"])
-    # tuile centrale : anneau + pique, la série en cours est le chiffre vivant
-    o.append('  <circle cx="450" cy="108" r="32" fill="none" stroke="%s" stroke-width="3.5"/>'
-             % p["gold"])
-    o.append('  <path d="%s" transform="translate(437.9,48.6) scale(1.35)" fill="%s"/>'
-             % (FLAMME, p["gold"]))
-    o.append('  <text x="450" y="120" text-anchor="middle" font-family="%s" font-size="34" '
-             'font-weight="700" fill="%s">%s</text>' % (SANS, p["text"], fr(n)))
-    o.append('  <text x="450" y="154" text-anchor="middle" font-family="%s" font-size="12" '
-             'fill="%s">Série actuelle</text>' % (SANS, p["gold"]))
-    o.append('  <text x="450" y="174" text-anchor="middle" font-family="%s" font-size="10.5" '
-             'fill="%s">%s</text>'
-             % (MONO, p["dim"], esc("%s – %s" % (court(d1), court(d2)) if n else "—")))
-    o.append('</svg>')
-    return "\n".join(o) + "\n"
-
-
 def carte_records(r, p):
     o = cadre(900, 200, "Records", p, r)
     tuiles = [
-        (fr(r["record"]), "Record en une journée", jour_fr(r["record_date"]), True),
+        (fr(r["semaine"][0]), "Meilleure semaine",
+         periode(r["semaine"][1], r["semaine"][2], max(r["jours"])), True),
         (fr(r["actifs"]), "Jours actifs", "depuis le %s" % jour_fr(r["premier"]), False),
         (("%.1f" % r["moyenne"]).replace(".", ","), "Par jour actif", "en moyenne", False),
         (fr(r["mois_total"]), "Meilleur mois", mois_fr(r["mois"]), False),
@@ -469,53 +448,6 @@ def carte_records(r, p):
     return "\n".join(o) + "\n"
 
 
-def carte_activite(r, p):
-    W, H = 900, 280
-    X0, X1, Y0, Y1 = 60, 872, 72, 226
-    pts = r["fenetre"]
-    haut = max(1, max(v for _, v in pts))
-    pas = (X1 - X0) / (len(pts) - 1)
-
-    def xy(i, v):
-        return (X0 + i * pas, Y1 - (v / haut) * (Y1 - Y0))
-
-    o = cadre(W, H, "Activité", p, r)
-    # grille et graduations
-    for frac in (0, 0.5, 1):
-        y = Y1 - frac * (Y1 - Y0)
-        o.append('  <path d="M%d,%.1f H%d" stroke="%s" stroke-width="1"/>' % (X0, y, X1, p["grid"]))
-        o.append('  <text x="%d" y="%.1f" text-anchor="end" font-family="%s" font-size="10" '
-                 'fill="%s">%s</text>' % (X0 - 10, y + 3.5, MONO, p["dim"], fr(round(haut * frac))))
-    # aire puis ligne
-    coords = [xy(i, v) for i, (_, v) in enumerate(pts)]
-    aire = "M%.1f,%d " % (coords[0][0], Y1) + " ".join("L%.1f,%.1f" % c for c in coords) + \
-           " L%.1f,%d Z" % (coords[-1][0], Y1)
-    o.append('  <path d="%s" fill="%s" fill-opacity="0.13"/>' % (aire, p["gold"]))
-    o.append('  <path d="%s" fill="none" stroke="%s" stroke-width="2" stroke-linejoin="round"/>'
-             % ("M" + " L".join("%.1f,%.1f" % c for c in coords), p["gold"]))
-    # sommet de la fenêtre, marqué
-    im = max(range(len(pts)), key=lambda i: pts[i][1])
-    if pts[im][1] > 0:
-        mx, my = coords[im]
-        o.append('  <circle cx="%.1f" cy="%.1f" r="3.5" fill="%s"/>' % (mx, my, p["text"]))
-        o.append('  <text x="%.1f" y="%.1f" text-anchor="middle" font-family="%s" font-size="10.5" '
-                 'fill="%s">%s</text>'
-                 % (min(max(mx, X0 + 20), X1 - 20), my - 11, MONO, p["text"],
-                    ("%.1f" % pts[im][1]).replace(".", ",")))
-    # étiquettes de mois
-    vus = set()
-    for i, (d, _) in enumerate(pts):
-        if d.month not in vus and (i == 0 or d.day <= 7):
-            vus.add(d.month)
-            o.append('  <text x="%.1f" y="%d" text-anchor="middle" font-family="%s" font-size="10" '
-                     'fill="%s">%s</text>' % (xy(i, 0)[0], Y1 + 22, MONO, p["dim"], ABBR[d.month - 1]))
-    o.append('  <text x="%d" y="%d" text-anchor="end" font-family="%s" font-size="10.5" fill="%s">'
-             'moyenne glissante sur 7 jours · %d derniers jours</text>'
-             % (X1, Y1 + 46, MONO, p["muted"], len(pts)))
-    o.append('</svg>')
-    return "\n".join(o) + "\n"
-
-
 # ------------------------------------------------------------------- skyline
 #
 # Portage statique de « Contribution Skyline » (21st.dev, @kedhareswer) : une
@@ -525,7 +457,8 @@ def carte_activite(r, p):
 # interaction disparaît — rotation, survol, bascule 2D/3D. Ce qui se dit en SVG
 # pur reste : la même caméra, le même ordre de peinture, les trois faces
 # ombrées, et la montée des barres en vague du plus ancien au plus récent,
-# rejouée en SMIL au chargement de l'image.
+# rejouée en CSS au chargement de l'image (animations pilotées par variables,
+# voir plus bas pourquoi pas SMIL).
 
 SKY_CS = SKY_SN = math.cos(math.radians(45))   # lacet de la caméra
 SKY_SE = math.sin(math.radians(34))            # élévation
@@ -537,6 +470,12 @@ SKY_ATTENTE = 0.35     # avant que la vague parte, en secondes
 SKY_DUREE = 1.4        # durée de la vague
 SKY_VAGUE = 0.42       # part de la vague passée à attendre son tour
 SKY_SCENE = (28, 58, 872, 548)   # zone de dessin : x0, y0, x1, y1
+# Débord, en pixels, des faces latérales sous les faces peintes après elles.
+# Chaque face est lissée séparément : deux faces qui se touchent bord à bord
+# laissent passer le fond sur leur arête, un filet clair très visible sur les
+# barres sombres du thème clair. La face du dessous dépasse donc un peu sous
+# celle qui la recouvre — droite sous gauche, les deux sous le dessus.
+SKY_DEBORD = 0.6
 
 # Cinq teintes par thème : journée vide, puis quatre niveaux d'activité. L'or
 # du profil en est le sommet ; en clair l'ordre s'inverse, la plus forte
@@ -571,7 +510,9 @@ def _niveau(n, seuil):
 def _grille(jours):
     """Cinquante-trois semaines finissant sur la dernière journée connue — celle
     du fuseau du compte, comme le graphe du profil. Lundi en haut de colonne."""
-    fin = _jour(max(jours))
+    # Jamais avant aujourd'hui : une donnée manquante en fin de série ne doit
+    # pas faire reculer la fenêtre en silence.
+    fin = max(_jour(max(jours)), date.today())
     debut = fin - timedelta(days=364)
     debut -= timedelta(days=debut.weekday())
     cases, d, i = [], debut, 0
@@ -622,6 +563,34 @@ def _bloc(x, y, ancre, label, valeur, unite, detail, p, icone=False):
     return o
 
 
+# Chasse des glyphes en cadratins, métriques d'Arial/Helvetica. Une image SVG
+# ne peut pas mesurer son texte ; il faut donc l'estimer pour réserver la place
+# des chiffres en coin. Les caractères absents valent 0,6.
+CHASSE = dict(zip("0123456789", [0.556] * 10))
+CHASSE.update({" ": 0.278, NNBSP: 0.2, ".": 0.278, ",": 0.278, "–": 0.556, "—": 1.0,
+               "a": 0.556, "b": 0.556, "c": 0.5, "d": 0.556, "e": 0.556, "é": 0.556,
+               "f": 0.278, "g": 0.556, "h": 0.556, "i": 0.222, "j": 0.222, "k": 0.5,
+               "l": 0.222, "m": 0.833, "n": 0.556, "o": 0.556, "p": 0.556, "q": 0.556,
+               "r": 0.333, "s": 0.5, "t": 0.278, "u": 0.556, "û": 0.556, "v": 0.5,
+               "w": 0.722, "x": 0.5, "y": 0.5, "z": 0.5})
+MARGE_POLICE = 1.15   # une police de repli comme DejaVu Sans est plus large
+
+
+def _largeur(texte, taille, chasse=None):
+    if chasse is not None:      # police à chasse fixe
+        return len(texte) * taille * chasse
+    return sum(CHASSE.get(c, 0.6) for c in texte) * taille * MARGE_POLICE
+
+
+def _emprise(x, y, ancre, label, valeur, unite, detail, icone=False):
+    """Rectangle occupé par un bloc de _bloc(), majoré : x0, y0, x1, y1."""
+    w = max(_largeur(label, 13) + (18 if icone else 0),
+            _largeur(valeur, 48) - len(valeur) + 9 + _largeur(unite, 15),
+            _largeur(detail, 11, chasse=0.62))
+    gauche = x - w if ancre == "end" else x
+    return (gauche - 6, y - 16, gauche + w + 6, y + 78)
+
+
 def carte_skyline(r, p):
     cases = _grille(r["jours"])
     semaines = cases[-1][2] + 1
@@ -630,22 +599,72 @@ def carte_skyline(r, p):
     record = actifs[-1] if actifs else 0
     marge = (1 - SKY_CUBE) / 2
 
-    # Cadrage : la scène entière, barres à pleine hauteur et rangée des mois
-    # comprises, ajustée à la zone de dessin puis centrée.
-    xs, ys = [], []
-    for _, n, w, d in cases:
-        for (sx, sy) in (_proj(w, d, 0), _proj(w + 1, d, 0), _proj(w, d + 1, 0),
-                         _proj(w + 1, d + 1, 0), _proj(w, d, _hauteur(n, record))):
-            xs.append(sx)
-            ys.append(sy)
-    for w in (0, semaines):
-        sx, sy = _proj(w, 8.6, 0)
-        xs.append(sx)
-        ys.append(sy)
     X0, Y0, X1, Y1 = SKY_SCENE
-    s = min((X1 - X0) / (max(xs) - min(xs)), (Y1 - Y0) / (max(ys) - min(ys)))
-    ox = X0 + ((X1 - X0) - (max(xs) - min(xs)) * s) / 2 - min(xs) * s
-    oy = Y0 + ((Y1 - Y0) - (max(ys) - min(ys)) * s) / 2 - min(ys) * s
+
+    # Les quatre chiffres, établis avant le cadrage : leurs coins sont réservés.
+    def unite(v, mot):
+        return mot if v <= 1 else mot + "s"
+
+    nc, c1, c2 = r["courante"]
+    nl, l1, l2 = r["longue"]
+    ref = max(r["jours"])
+    blocs = [
+        (X1 - 4, Y0 + 22, "end", "Total", fr(r["total"]), unite(r["total"], "contribution"),
+         "depuis le %s" % jour_fr(r["premier"]), False),
+        (X1 - 4, Y0 + 122, "end", "Record en une journée", fr(r["record"]),
+         unite(r["record"], "contribution"), jour_fr(r["record_date"]), False),
+        (X0 + 4, Y1 - 172, "start", "Plus longue série", fr(nl), unite(nl, "jour"),
+         periode(l1, l2, ref) if nl else "—", False),
+        (X0 + 4, Y1 - 72, "start", "Série actuelle", fr(nc), unite(nc, "jour"),
+         periode(c1, c2, ref) if nc else "—", True),
+    ]
+    zones = [_emprise(*b) for b in blocs]
+
+    # Mois, sous la première semaine de chacun.
+    mois, prec = [], None
+    for w in range(semaines):
+        jour = cases[w * 7][0]
+        if jour.month != prec:
+            mois.append((w, ABBR[jour.month - 1]))
+        prec = jour.month
+    if len(mois) > 1 and mois[1][0] - mois[0][0] < 3:
+        mois.pop(0)
+
+    # Boîtes de la scène hors échelle : chaque cube à pleine hauteur, et
+    # l'ancre de chaque étiquette de mois.
+    boites = []
+    for _, n, w, d in cases:
+        pts = [_proj(x, y, z) for x in (w + marge, w + marge + SKY_CUBE)
+               for y in (d + marge, d + marge + SKY_CUBE) for z in (0, _hauteur(n, record))]
+        boites.append((min(q[0] for q in pts), min(q[1] for q in pts),
+                       max(q[0] for q in pts), max(q[1] for q in pts)))
+    ancres = [(_proj(w + 0.5, 7.2, 0), lab) for w, lab in mois]
+    xs = [b[0] for b in boites] + [b[2] for b in boites] + [a[0][0] for a in ancres]
+    ys = [b[1] for b in boites] + [b[3] for b in boites] + [a[0][1] + 1.0 for a in ancres]
+    lx, ly = max(xs) - min(xs), max(ys) - min(ys)
+
+    def place(s):
+        return (X0 + ((X1 - X0) - lx * s) / 2 - min(xs) * s,
+                Y0 + ((Y1 - Y0) - ly * s) / 2 - min(ys) * s)
+
+    def empiete(s, ox, oy):
+        rects = [(ox + a * s, oy + b * s, ox + c * s, oy + d * s) for a, b, c, d in boites]
+        rects += [(ox + q[0] * s - 2 - _largeur(lab, 10, chasse=0.61), oy + q[1] * s + 3,
+                   ox + q[0] * s - 2, oy + q[1] * s + 13) for q, lab in ancres]
+        return any(a < z2 and c > z0 and b < z3 and d > z1
+                   for a, b, c, d in rects for z0, z1, z2, z3 in zones)
+
+    # Ajusté à la zone de dessin, puis réduit tant qu'un cube ou un mois entre
+    # dans le coin d'un chiffre. La diagonale laisse ces coins libres avec les
+    # données d'aujourd'hui ; un record à cinq chiffres un lundi d'été, ou une
+    # police de repli plus large, suffirait à poser une tour sous un chiffre.
+    s = min((X1 - X0) / lx, (Y1 - Y0) / ly)
+    ox, oy = place(s)
+    for _ in range(40):
+        if not empiete(s, ox, oy):
+            break
+        s *= 0.97
+        ox, oy = place(s)
 
     def ecran(x, y, z):
         sx, sy = _proj(x, y, z)
@@ -680,11 +699,13 @@ def carte_skyline(r, p):
              % (regles, montee, h_dalle))
 
     # Une journée vide est la même dalle partout : dessinée une fois, réutilisée.
+    # Ses côtés montent un peu sous le dessus (voir SKY_DEBORD).
     bx, by = ecran(marge, marge, 0)
+    droite, gauche, _ = _faces(marge, marge, SKY_DALLE + SKY_DEBORD / (SKY_CE * s), ecran)
+    dessus = _faces(marge, marge, SKY_DALLE, ecran)[2]
     o.append('  <defs><g id="v">' + "".join(
         '<polygon class="%s" points="%s"/>' % (c, _pts([(x - bx, y - by) for x, y in f]))
-        for c, f in zip(("d0", "g0", "t0"), _faces(marge, marge, SKY_DALLE, ecran)))
-        + '</g></defs>')
+        for c, f in zip(("d0", "g0", "t0"), (droite, gauche, dessus))) + '</g></defs>')
 
     # Ordre du peintre : du plus loin au plus proche de la caméra. La vague
     # part de la semaine la plus ancienne, avec un léger décalage par jour.
@@ -703,26 +724,19 @@ def carte_skyline(r, p):
         o.append(
             '  <g style="--h:%.1f;--d:%.1fpx;--t:%.2fs">'
             '<g transform="translate(%.1f,%.1f) skewY(%.2f)"><rect class="d%d m" x="%.1f" '
-            'y="-1" width="%.1f" height="1" transform="scale(1,%.1f)"/></g>'
+            'y="%.4f" width="%.1f" height="%.4f" transform="scale(1,%.1f)"/></g>'
             '<g transform="translate(%.1f,%.1f) skewY(%.2f)"><rect class="g%d m" '
-            'y="-1" width="%.1f" height="1" transform="scale(1,%.1f)"/></g>'
+            'y="%.4f" width="%.1f" height="%.4f" transform="scale(1,%.1f)"/></g>'
             '<polygon class="t%d u" points="%s"/></g>'
             % (h, h - h_dalle, t,
-               rx, ry, -pente, k, -l_droite, l_droite, h,
-               gx, gy, pente, k, l_gauche, h,
+               rx, ry, -pente, k, -l_droite - SKY_DEBORD, -1 - SKY_DEBORD / h,
+               l_droite + SKY_DEBORD, 1 + SKY_DEBORD / h, h,
+               gx, gy, pente, k, -1 - SKY_DEBORD / h, l_gauche, 1 + SKY_DEBORD / h, h,
                k, _pts(_faces(x0, y0, z, ecran)[2])))
 
     # Mois, sous l'arête avant, alignés à droite sur la première semaine de
     # chacun : ils débordent ainsi vers le vide en contrebas, jamais sur les
     # cubes des semaines suivantes.
-    mois, prec = [], None
-    for w in range(semaines):
-        jour = cases[w * 7][0]
-        if jour.month != prec:
-            mois.append((w, ABBR[jour.month - 1]))
-        prec = jour.month
-    if len(mois) > 1 and mois[1][0] - mois[0][0] < 3:
-        mois.pop(0)
     for w, lab in mois:
         x, y = ecran(w + 0.5, 7.2, 0)
         if x - len(lab) * 6.1 < X0 - 12:
@@ -731,19 +745,8 @@ def carte_skyline(r, p):
                  'fill="%s">%s</text>' % (x - 2, y + 11, MONO, p["dim"], esc(lab)))
 
     # Les quatre chiffres, dans les deux coins que la diagonale laisse vides.
-    def unite(v, mot):
-        return mot if v <= 1 else mot + "s"
-
-    nc, c1, c2 = r["courante"]
-    nl, l1, l2 = r["longue"]
-    o += _bloc(X1 - 4, Y0 + 22, "end", "Total", fr(r["total"]),
-               unite(r["total"], "contribution"), "depuis le %s" % jour_fr(r["premier"]), p)
-    o += _bloc(X1 - 4, Y0 + 122, "end", "Record en une journée", fr(r["record"]),
-               unite(r["record"], "contribution"), jour_fr(r["record_date"]), p)
-    o += _bloc(X0 + 4, Y1 - 172, "start", "Plus longue série", fr(nl), unite(nl, "jour"),
-               "%s – %s" % (court(l1), court(l2)) if nl else "—", p)
-    o += _bloc(X0 + 4, Y1 - 72, "start", "Série actuelle", fr(nc), unite(nc, "jour"),
-               "%s – %s" % (court(c1), court(c2)) if nc else "—", p, icone=True)
+    for b in blocs:
+        o += _bloc(*b[:7], p, icone=b[7])
 
     # Pied : ce que montre la carte, et la légende des niveaux.
     yp = Y1 + 30
@@ -762,8 +765,7 @@ def carte_skyline(r, p):
     return "\n".join(o) + "\n"
 
 
-CARTES = (("serie", carte_serie), ("records", carte_records), ("activite", carte_activite),
-          ("skyline", carte_skyline))
+CARTES = (("skyline", carte_skyline), ("records", carte_records))
 
 
 def main():
