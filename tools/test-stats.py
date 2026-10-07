@@ -8,7 +8,8 @@ chiffres faux. Chaque test correspond à une panne réellement survenue.
 import importlib.util
 import os
 import sys
-from datetime import date, timedelta
+import tempfile
+from datetime import date, datetime, timedelta, timezone
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("bs", os.path.join(ICI, "build-stats.py"))
@@ -125,7 +126,6 @@ bs.compte_cree_le, bs.via_page, bs.via_graphql = _cree, _page, _gql
 # fois — un cache trop gourmand figerait justement le chiffre du jour, soit
 # exactement le défaut qu'on cherche à corriger.
 print("Cache des années révolues")
-import tempfile
 
 appels = []
 _cree, _page, _gql, _cache_dir = bs.compte_cree_le, bs.via_page, bs.via_graphql, bs.CACHE
@@ -149,6 +149,36 @@ verifie("le premier passage lit les deux années", annees_1 == [fin.year - 1, fi
 verifie("le second ne relit que l'année en cours", annees_2 == [fin.year],
         "années lues : %s" % annees_2)
 verifie("le cache ne change aucun chiffre", premier == second)
+bs.compte_cree_le, bs.via_page, bs.via_graphql, bs.CACHE = _cree, _page, _gql, _cache_dir
+
+# --- 2 quater. Année en cours illisible ---------------------------------------
+# Panne relevée en relecture : les deux sources échouent sur l'année en cours
+# alors que l'année close vient du cache. `jours` n'était pas vide, le calcul
+# continuait sur l'année passée seule — total amputé, et un skyline arrêté au
+# 31 décembre présenté comme « les 12 derniers mois ». Rien ne doit être publié.
+print("Année en cours illisible")
+_cree, _page, _gql, _cache_dir = bs.compte_cree_le, bs.via_page, bs.via_graphql, bs.CACHE
+panne = {"active": False}
+
+
+def source_fragile(d, f):
+    if panne["active"] and d.year == fin.year:
+        raise OSError("502 Bad Gateway")
+    return {(d + timedelta(days=i)).isoformat(): 2 for i in range((f - d).days + 1)}
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    bs.CACHE = tmp
+    bs.compte_cree_le = lambda: date(fin.year - 1, 3, 1)
+    bs.via_page = bs.via_graphql = source_fragile
+    bs.calendrier()                       # remplit le cache de l'année close
+    panne["active"] = True
+    try:
+        bs.calendrier()
+        refuse = False
+    except SystemExit:
+        refuse = True
+verifie("une année en cours illisible arrête tout, même avec le cache", refuse)
 bs.compte_cree_le, bs.via_page, bs.via_graphql, bs.CACHE = _cree, _page, _gql, _cache_dir
 
 # --- 3. Calcul des séries ----------------------------------------------------
@@ -238,21 +268,152 @@ verifie("la meilleure semaine est la fenêtre glissante la plus forte",
         sem == (350, jeudi.isoformat(), (jeudi + timedelta(days=6)).isoformat()),
         "obtenu : %s" % (sem,))
 
-# La carte elle-même. Chaque barre animée porte sa géométrie finale en
-# attribut : c'est elle qu'affiche un moteur sans CSS, ou un visiteur en
-# mouvement réduit. L'animation ne fait que partir d'une dalle pour y revenir.
-svg = bs.carte_skyline(bs.stats(bs.calendrier_demo()), bs.DARK)
+# La grille ne recule jamais sous aujourd'hui, même si la dernière journée
+# manque dans les données.
+vieilles = {(fin - timedelta(days=i)).isoformat(): 1 for i in range(10, 400)}
+verifie("la grille ne recule pas sous aujourd'hui",
+        bs._grille(vieilles)[-1][0] == fin, "fin : %s" % bs._grille(vieilles)[-1][0])
+
+# Périodes : l'année apparaît dès qu'elle diffère de celle de la dernière
+# journée connue. Sans elle, une série de l'an passé se lirait dans la frise.
+verifie("une période de l'année en cours reste courte",
+        bs.periode("2026-07-12", "2026-08-13", "2026-10-07") == "12 juil. – 13 août")
+verifie("une période d'une autre année porte son année",
+        bs.periode("2026-07-12", "2026-08-13", "2027-08-20") == "12 juil. – 13 août 2026")
+verifie("une période à cheval sur deux années les nomme",
+        bs.periode("2026-12-28", "2027-01-03", "2027-01-05") == "28 déc. 2026 – 3 janv.")
+
+# --- la carte elle-même ---
+# Rendu de référence : données de démonstration, date et heure figées.
+_date = bs.date
+bs.date = type("D", (date,), {"today": classmethod(lambda c: date(2026, 10, 7))})
+r = bs.stats(bs.calendrier_demo())
+r["calcule"] = datetime(2026, 10, 7, 8, 0, tzinfo=timezone.utc)
+svg = bs.carte_skyline(r, bs.DARK)
+cases = bs._grille(r["jours"])
+bs.date = _date
+
+style = re.search(r"<style>(.*?)</style>", svg).group(1)
 verifie("l'horodatage est présent (l'empreinte en dépend)", "mis à jour le" in svg)
-verifie("le mouvement réduit coupe l'animation",
-        "@media (prefers-reduced-motion:reduce){.m,.u{animation:none}}" in svg)
-barres = re.findall(r'<g style="--h:([\d.]+);[^"]*">(.*?)<polygon', svg)
+
+# Animation. Une image clé cassée aplatit toutes les barres pour tout visiteur
+# dont le navigateur anime : c'est l'état final qui serait affiché.
+verifie("image clé des faces latérales exacte",
+        re.search(r"@keyframes m\{from\{transform:scale\(1,[\d.]+\)\}"
+                  r"to\{transform:scale\(1,var\(--h\)\)\}\}", style) is not None)
+verifie("image clé du dessus exacte",
+        "@keyframes u{from{transform:translate(0,var(--d))}to{transform:translate(0,0)}}" in style)
+verifie("l'animation part après son délai et garde son état final",
+        re.search(r"\.m,\.u\{animation:[\d.]+s cubic-bezier\([^)]*\) var\(--t\) both\}", style)
+        is not None)
+# Placée avant la règle d'animation, la règle du mouvement réduit serait
+# écrasée par elle : la présence du texte ne suffit pas, l'ordre compte.
+i_anim = style.find(".m,.u{animation:")
+i_reduit = style.find("@media (prefers-reduced-motion:reduce){.m,.u{animation:none}}")
+verifie("le mouvement réduit vient après l'animation et la coupe", 0 <= i_anim < i_reduit,
+        "positions : animation %d, mouvement réduit %d" % (i_anim, i_reduit))
+
+barres = re.findall(r'<g style="--h:([\d.]+);--d:(-?[\d.]+)px;--t:([\d.]+)s">(.*?)</g>'
+                    r'(?=\n|$)', svg, re.M)
 coherent = barres and all(
-    re.findall(r'scale\(1,([\d.]+)\)', corps) == [h, h] for h, corps in barres)
+    re.findall(r'scale\(1,([\d.]+)\)', corps) == [h, h] for h, _, _, corps in barres)
 verifie("chaque barre porte sa hauteur finale en attribut", bool(coherent),
         "%d barres" % len(barres))
-nb_actifs = sum(1 for _, n, _, _ in bs._grille(bs.calendrier_demo()) if n > 0)
+nb_actifs = sum(1 for _, n, _, _ in cases if n > 0)
 verifie("une barre animée par journée active", len(barres) == nb_actifs,
         "%d barres pour %d journées actives" % (len(barres), nb_actifs))
+verifie("le dessus descend vers la dalle au départ", all(float(d) > 0 for _, d, _, _ in barres))
+delais = [float(t) for _, _, t, _ in barres]
+verifie("la vague part des semaines anciennes", delais[0] < delais[-1],
+        "premier délai %.2f s, dernier %.2f s" % (delais[0], delais[-1]))
+
+# Géométrie. Face droite cisaillée vers le haut à gauche, face gauche vers le
+# bas à droite : inverser un signe retourne le pied de toutes les barres.
+skews = re.findall(r'skewY\((-?[\d.]+)\)"><rect class="([dg])\d m"', svg)
+verifie("face droite cisaillée en négatif, face gauche en positif",
+        skews and all((float(a) < 0) == (c == "d") for a, c in skews),
+        "%d faces" % len(skews))
+
+
+def luminance(hexa):
+    r_, g_, b_ = (int(hexa[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * r_ + 0.7152 * g_ + 0.0722 * b_
+
+
+teinte = dict(re.findall(r"\.([dgt]\d)\{fill:(#[0-9A-F]{6})\}", style))
+verifie("ombrage : dessus plus clair que la gauche, plus clair que la droite",
+        all(luminance(teinte["t%d" % k]) > luminance(teinte["g%d" % k]) > luminance(teinte["d%d" % k])
+            for k in range(1, 5)))
+
+# Ordre du peintre. À profondeur croissante, la base d'une case descend à
+# l'écran : la suite des bases doit donc croître dans l'ordre du document.
+# Base d'une dalle : y du <use> ; d'une barre : premier sommet du dessus + h.
+bases = []
+for m in re.finditer(r'<use href="#v" x="[\d.]+" y="([\d.]+)"/>'
+                     r'|<g style="--h:([\d.]+);[^>]*>.*?<polygon class="t\d u" points="[\d.]+,([\d.]+)',
+                     svg):
+    bases.append(float(m.group(1)) if m.group(1) else float(m.group(3)) + float(m.group(2)))
+verifie("ordre du peintre : du fond vers l'avant",
+        len(bases) == len(cases) and all(b >= a - 0.25 for a, b in zip(bases, bases[1:])),
+        "%d cases lues sur %d" % (len(bases), len(cases)))
+verifie("une dalle réutilisée par journée vide",
+        '<g id="v">' in svg and svg.count('<use href="#v"') == len(cases) - nb_actifs)
+verifie("les mois sont étiquetés",
+        len(re.findall(r'text-anchor="end" font-family="[^"]*" font-size="10" ', svg)) >= 10)
+
+# Les quatre chiffres, chacun à sa place.
+chiffres = re.findall(r'<tspan font-size="48"[^>]*>([^<]+)</tspan>', svg)
+attendus = [bs.fr(r["total"]), bs.fr(r["record"]), bs.fr(r["longue"][0]), bs.fr(r["courante"][0])]
+verifie("total, record, plus longue série, série actuelle dans cet ordre",
+        chiffres == attendus, "lus : %s" % chiffres)
+
+# Coins réservés. Cas relevé en relecture : un record à cinq chiffres un lundi
+# d'été posait sa tour sous les chiffres du coin haut-droit.
+_date = bs.date
+bs.date = type("D", (date,), {"today": classmethod(lambda c: date(2026, 10, 7))})
+aj = date(2026, 10, 7)
+jc = {(aj - timedelta(days=i)).isoformat(): (8 if i < 270 and i % 3 else 0) for i in range(300)}
+lundi = aj - timedelta(days=16 * 7 + aj.weekday())
+jc[lundi.isoformat()] = 12345
+rc = bs.stats(jc)
+svg_coin = bs.carte_skyline(rc, bs.DARK)
+bs.date = _date
+X0, Y0, X1, Y1 = bs.SKY_SCENE
+zone = bs._emprise(X1 - 4, Y0 + 122, "end", "Record en une journée", bs.fr(rc["record"]),
+                   "contributions", bs.jour_fr(rc["record_date"]))
+heurts = 0
+for h, corps in re.findall(r'<g style="--h:([\d.]+);[^>]*>(.*?)</g>(?=\n|$)', svg_coin, re.M):
+    pts = [tuple(map(float, q.split(","))) for q in
+           re.search(r'class="t\d u" points="([^"]+)"', corps).group(1).split()]
+    gx, gy = min(q[0] for q in pts), min(q[1] for q in pts)
+    dx, dy = max(q[0] for q in pts), max(q[1] for q in pts) + float(h)
+    heurts += gx < zone[2] and dx > zone[0] and gy < zone[3] and dy > zone[1]
+verifie("aucune barre sous les chiffres du record", heurts == 0, "%d barre(s)" % heurts)
+
+# Empreinte. Deux calculs des mêmes données à des heures différentes doivent
+# donner la même empreinte, sinon la boucle republie toutes les deux minutes.
+import subprocess
+empreintes = []
+for heure in (8, 9):
+    r["calcule"] = datetime(2026, 10, 7, heure, 17, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as tmp:
+        for nom, rendu in bs.CARTES:
+            for pal in (bs.DARK, bs.LIGHT):
+                with open(os.path.join(tmp, "%s-%s.svg" % (nom, "dark" if pal is bs.DARK else "light")),
+                          "w", encoding="utf-8") as f:
+                    f.write(rendu(r, pal))
+        empreintes.append(subprocess.run([sys.executable, os.path.join(ICI, "empreinte.py"), tmp],
+                                         capture_output=True, text=True).stdout.strip())
+verifie("l'empreinte ne dépend que des chiffres, pas de l'heure du calcul",
+        empreintes[0] and empreintes[0] == empreintes[1], "empreintes : %s" % empreintes)
+
+# Rendu de référence. Toute modification de géométrie, d'ordre ou de style
+# change cette empreinte. Si c'est voulu : regarder le rendu (deux thèmes,
+# pendant et après l'animation), puis recopier la nouvelle valeur ici.
+import hashlib
+REFERENCE = "10b520e94e7c90a6"
+obtenue = hashlib.sha256(svg.encode("utf-8")).hexdigest()[:16]
+verifie("le rendu de référence n'a pas bougé", obtenue == REFERENCE, "obtenue : %s" % obtenue)
 
 print()
 if echecs:

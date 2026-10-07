@@ -15,7 +15,7 @@ GitHub de Yanis. Thème as de pique, public mixte développeurs et recruteurs.
 | `tools/boucle-stats.sh` | recalcule en boucle et publie |
 | `tools/test-stats.py` | vérifications, exécutées avant toute publication |
 | `.github/workflows/records.yml` | fait tourner la boucle |
-| branche `stats` | les six cartes publiées (orpheline, réécrite à chaque publication) |
+| branche `stats` | les quatre cartes publiées — skyline et records, deux thèmes chacune (orpheline, réécrite à chaque publication) |
 
 ## Règles qui ne se négocient pas
 
