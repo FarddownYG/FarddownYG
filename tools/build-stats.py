@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Calcule toutes les statistiques du profil et en fait des cartes SVG.
 
-Trois cartes, deux thèmes chacune, toutes issues d'UNE seule lecture du
+Deux cartes, deux thèmes chacune, toutes issues d'UNE seule lecture du
 calendrier de contributions public de GitHub :
 
-    serie      contributions totales · série actuelle · plus longue série
-    records    record en une journée · jours actifs · moyenne · meilleur mois
-    activite   graphique des 90 derniers jours
+    skyline    l'année en relief, un cube par jour ; dans les coins : total,
+               record en une journée, plus longue série, série actuelle
+    records    meilleure semaine · jours actifs · moyenne · meilleur mois
 
 Aucun service tiers : les instances publiques gratuites tombent ou servent
 du cache, et rien ne permet alors de savoir si un chiffre est à jour. Ici
@@ -48,7 +48,6 @@ MOIS = ["janvier", "février", "mars", "avril", "mai", "juin",
 ABBR = ["janv.", "févr.", "mars", "avr.", "mai", "juin",
         "juil.", "août", "sept.", "oct.", "nov.", "déc."]
 NNBSP = " "  # espace fine insécable : séparateur de milliers français
-FENETRE = 90      # jours affichés par le graphique d'activité
 
 
 # ---------------------------------------------------------------- récupération
@@ -308,18 +307,6 @@ def stats(jours):
     meilleur_mois = max(par_mois, key=lambda k: par_mois[k])
     courante, longue = series(jours)
 
-    # Moyenne glissante sur 7 jours plutôt que valeurs brutes : une journée
-    # record à 254 contre des journées ordinaires à 5-15 écrase la courbe et
-    # la rend illisible. Le lissage garde la forme réelle de l'activité ; le
-    # record du jour, lui, a sa place sur la carte des records.
-    fin = date.today()
-
-    def moy7(d):
-        return sum(jours.get((d - timedelta(days=k)).isoformat(), 0) for k in range(7)) / 7.0
-
-    fenetre = [(fin - timedelta(days=i), moy7(fin - timedelta(days=i)))
-               for i in range(FENETRE - 1, -1, -1)]
-
     # Meilleure semaine : sept jours consécutifs, en fenêtre glissante plutôt
     # qu'en semaines du calendrier — une semaine record à cheval sur deux
     # semaines civiles ne doit pas être coupée en deux.
@@ -348,7 +335,6 @@ def stats(jours):
         "mois_total": par_mois[meilleur_mois],
         "courante": courante,
         "longue": longue,
-        "fenetre": fenetre,
         "calcule": datetime.now(timezone.utc),
     }
 
@@ -424,37 +410,11 @@ def tuile(cx, val, lab, det, p, phare=False, y=128):
     ]
 
 
-def carte_serie(r, p):
-    n, d1, d2 = r["courante"]
-    ln, l1, l2 = r["longue"]
-    o = cadre(900, 200, "Série", p, r)
-    # tuile de gauche et de droite
-    o += tuile(150, fr(r["total"]), "Contributions totales",
-               "depuis le %s" % jour_fr(r["premier"]), p)
-    o += tuile(750, fr(ln), "Plus longue série",
-               "%s – %s" % (court(l1), court(l2)) if ln else "—", p)
-    o.append('  <path d="M300,84 V178" stroke="%s" stroke-width="1" opacity="0.75"/>' % p["rule"])
-    o.append('  <path d="M600,84 V178" stroke="%s" stroke-width="1" opacity="0.75"/>' % p["rule"])
-    # tuile centrale : anneau + pique, la série en cours est le chiffre vivant
-    o.append('  <circle cx="450" cy="108" r="32" fill="none" stroke="%s" stroke-width="3.5"/>'
-             % p["gold"])
-    o.append('  <path d="%s" transform="translate(437.9,48.6) scale(1.35)" fill="%s"/>'
-             % (FLAMME, p["gold"]))
-    o.append('  <text x="450" y="120" text-anchor="middle" font-family="%s" font-size="34" '
-             'font-weight="700" fill="%s">%s</text>' % (SANS, p["text"], fr(n)))
-    o.append('  <text x="450" y="154" text-anchor="middle" font-family="%s" font-size="12" '
-             'fill="%s">Série actuelle</text>' % (SANS, p["gold"]))
-    o.append('  <text x="450" y="174" text-anchor="middle" font-family="%s" font-size="10.5" '
-             'fill="%s">%s</text>'
-             % (MONO, p["dim"], esc("%s – %s" % (court(d1), court(d2)) if n else "—")))
-    o.append('</svg>')
-    return "\n".join(o) + "\n"
-
-
 def carte_records(r, p):
     o = cadre(900, 200, "Records", p, r)
     tuiles = [
-        (fr(r["record"]), "Record en une journée", jour_fr(r["record_date"]), True),
+        (fr(r["semaine"][0]), "Meilleure semaine",
+         "%s – %s" % (court(r["semaine"][1]), court(r["semaine"][2])), True),
         (fr(r["actifs"]), "Jours actifs", "depuis le %s" % jour_fr(r["premier"]), False),
         (("%.1f" % r["moyenne"]).replace(".", ","), "Par jour actif", "en moyenne", False),
         (fr(r["mois_total"]), "Meilleur mois", mois_fr(r["mois"]), False),
@@ -465,53 +425,6 @@ def carte_records(r, p):
             o.append('  <path d="M%g,84 V178" stroke="%s" stroke-width="1" opacity="0.75"/>'
                      % (24 + 213 * i, p["rule"]))
         o += tuile(cx, val, lab, det, p, phare)
-    o.append('</svg>')
-    return "\n".join(o) + "\n"
-
-
-def carte_activite(r, p):
-    W, H = 900, 280
-    X0, X1, Y0, Y1 = 60, 872, 72, 226
-    pts = r["fenetre"]
-    haut = max(1, max(v for _, v in pts))
-    pas = (X1 - X0) / (len(pts) - 1)
-
-    def xy(i, v):
-        return (X0 + i * pas, Y1 - (v / haut) * (Y1 - Y0))
-
-    o = cadre(W, H, "Activité", p, r)
-    # grille et graduations
-    for frac in (0, 0.5, 1):
-        y = Y1 - frac * (Y1 - Y0)
-        o.append('  <path d="M%d,%.1f H%d" stroke="%s" stroke-width="1"/>' % (X0, y, X1, p["grid"]))
-        o.append('  <text x="%d" y="%.1f" text-anchor="end" font-family="%s" font-size="10" '
-                 'fill="%s">%s</text>' % (X0 - 10, y + 3.5, MONO, p["dim"], fr(round(haut * frac))))
-    # aire puis ligne
-    coords = [xy(i, v) for i, (_, v) in enumerate(pts)]
-    aire = "M%.1f,%d " % (coords[0][0], Y1) + " ".join("L%.1f,%.1f" % c for c in coords) + \
-           " L%.1f,%d Z" % (coords[-1][0], Y1)
-    o.append('  <path d="%s" fill="%s" fill-opacity="0.13"/>' % (aire, p["gold"]))
-    o.append('  <path d="%s" fill="none" stroke="%s" stroke-width="2" stroke-linejoin="round"/>'
-             % ("M" + " L".join("%.1f,%.1f" % c for c in coords), p["gold"]))
-    # sommet de la fenêtre, marqué
-    im = max(range(len(pts)), key=lambda i: pts[i][1])
-    if pts[im][1] > 0:
-        mx, my = coords[im]
-        o.append('  <circle cx="%.1f" cy="%.1f" r="3.5" fill="%s"/>' % (mx, my, p["text"]))
-        o.append('  <text x="%.1f" y="%.1f" text-anchor="middle" font-family="%s" font-size="10.5" '
-                 'fill="%s">%s</text>'
-                 % (min(max(mx, X0 + 20), X1 - 20), my - 11, MONO, p["text"],
-                    ("%.1f" % pts[im][1]).replace(".", ",")))
-    # étiquettes de mois
-    vus = set()
-    for i, (d, _) in enumerate(pts):
-        if d.month not in vus and (i == 0 or d.day <= 7):
-            vus.add(d.month)
-            o.append('  <text x="%.1f" y="%d" text-anchor="middle" font-family="%s" font-size="10" '
-                     'fill="%s">%s</text>' % (xy(i, 0)[0], Y1 + 22, MONO, p["dim"], ABBR[d.month - 1]))
-    o.append('  <text x="%d" y="%d" text-anchor="end" font-family="%s" font-size="10.5" fill="%s">'
-             'moyenne glissante sur 7 jours · %d derniers jours</text>'
-             % (X1, Y1 + 46, MONO, p["muted"], len(pts)))
     o.append('</svg>')
     return "\n".join(o) + "\n"
 
@@ -762,8 +675,7 @@ def carte_skyline(r, p):
     return "\n".join(o) + "\n"
 
 
-CARTES = (("serie", carte_serie), ("records", carte_records), ("activite", carte_activite),
-          ("skyline", carte_skyline))
+CARTES = (("skyline", carte_skyline), ("records", carte_records))
 
 
 def main():

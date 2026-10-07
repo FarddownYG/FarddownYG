@@ -10,7 +10,7 @@ GitHub de Yanis. Thème as de pique, public mixte développeurs et recruteurs.
 | `README.md` | la page du profil |
 | `assets/header-*.svg`, `assets/divider-*.svg` | bannière animée et séparateur, deux thèmes |
 | `tools/build-header.py` | génère la bannière (les deux thèmes depuis une seule source) |
-| `tools/build-stats.py` | calcule les statistiques et rend les trois cartes |
+| `tools/build-stats.py` | calcule les statistiques et rend les deux cartes (skyline, records) |
 | `tools/empreinte.py` | empreinte des cartes hors horodatage, pour ne publier que sur changement |
 | `tools/boucle-stats.sh` | recalcule en boucle et publie |
 | `tools/test-stats.py` | vérifications, exécutées avant toute publication |
@@ -75,7 +75,7 @@ Mesures faites le 12 août 2026 sur ce dépôt.
 | déclenchement planifié (`schedule`) | **écart médian 57 min, jusqu'à 90** | non — première cause, contournée |
 | fraîcheur de la source lue | **grille publique gelée > 2 h**, GraphQL à jour | oui — seconde cause, corrigée |
 | détection d'un changement | 120 s (période de la boucle) | oui, `PERIODE` |
-| calcul des trois cartes + publication | ~1,5 s | oui |
+| calcul des cartes + publication | ~1,5 s | oui |
 | propagation sur `raw.githubusercontent.com` | de 40 s à 300 s selon le nœud de cache | non, imposé par GitHub |
 | proxy d'images Camo | **absent du trajet** | sans objet |
 | cache navigateur | découle du `max-age=300` ci-dessus | non |
@@ -248,6 +248,49 @@ Trois pannes déjà survenues, toutes couvertes par un test :
   donc jamais, alors que la boucle recalculait bien toutes les deux minutes. Ce
   n'était pas une question de cadence : on interrogeait une source périmée.
   D'où la règle « la source la plus avancée gagne ».
+
+## Le skyline
+
+La carte principale est un portage de
+[Contribution Skyline](https://21st.dev/@kedhareswer/components/contribution-skyline),
+un composant React dessiné sur canvas. **Il ne peut pas être intégré tel quel** :
+un README n'exécute aucun JavaScript, et copier le composant dans le dépôt ne
+produirait que du code mort que rien n'affiche. Le coller dans `components/ui/`
+comme le propose 21st.dev n'a de sens que dans une application React — un site,
+pas un profil.
+
+Ce qui a été repris, recalculé en Python dans `carte_skyline()` : la même
+caméra (lacet 45°, élévation 34°), le même ordre de peinture, les trois faces
+ombrées (dessus, gauche ×0,84, droite ×0,68), les niveaux aux quarts du 95e
+centile, les quatre chiffres dans les coins que la diagonale laisse vides, et la
+montée des barres en vague du plus ancien au plus récent.
+
+Ce qui a été abandonné, faute de JavaScript : la rotation à la souris, le
+survol d'une journée, la bascule 2D/3D, la mise en valeur d'un niveau au
+survol de la légende.
+
+Écarts voulus avec l'original :
+
+- **Hauteurs en racine carrée**, pas en puissance 0,85. Avec un record à 322,
+  l'échelle d'origine réduit une journée ordinaire à 12 % de la tour record ;
+  la racine la garde à 26 %. Un test le verrouille.
+- **Palette or du profil**, pas le vert GitHub.
+- **Animation en CSS, pas en SMIL.** Les valeurs propres à chaque barre passent
+  par des variables (`--h`, `--d`, `--t`). Chaque face latérale est un
+  rectangle unité cisaillé (`skewY(±29,2°)`) dont seule la hauteur s'anime, et
+  chaque élément garde sa géométrie finale en attribut : sans CSS ou en
+  mouvement réduit, la carte s'affiche complète. En SMIL il aurait fallu une
+  jumelle immobile par barre — 271 Ko contre 78.
+- **Les journées vides sont une seule dalle** réutilisée par `<use>`.
+
+Le record du jour, la plus longue série et la série actuelle vivent désormais
+dans le skyline ; la carte des records affiche la meilleure semaine (sept jours
+glissants) à la place du record, pour ne montrer aucun chiffre deux fois.
+
+**Une limite de vérification :** Chromium émulé ne transmet pas
+`prefers-reduced-motion` aux documents chargés en `<img>`. Le CSS a été vérifié
+en ouvrant le SVG comme document principal ; savoir si un navigateur donné
+transmet la préférence à une image dépend de lui, pas de la carte.
 
 ## À savoir sur le rendu SVG
 
