@@ -23,6 +23,7 @@ En cas d'échec réseau, le script sort en erreur SANS rien écrire : des
 cartes valides ne sont jamais remplacées par des cartes vides.
 """
 import json
+import math
 import os
 import re
 import sys
@@ -319,7 +320,24 @@ def stats(jours):
     fenetre = [(fin - timedelta(days=i), moy7(fin - timedelta(days=i)))
                for i in range(FENETRE - 1, -1, -1)]
 
+    # Meilleure semaine : sept jours consécutifs, en fenêtre glissante plutôt
+    # qu'en semaines du calendrier — une semaine record à cheval sur deux
+    # semaines civiles ne doit pas être coupée en deux.
+    d, d_fin = _jour(min(jours)), _jour(max(jours))
+    suite = []
+    while d <= d_fin:
+        suite.append((d, jours.get(d.isoformat(), 0)))
+        d += timedelta(days=1)
+    semaine, fin_semaine, cumul = -1, len(suite) - 1, 0
+    for i, (_, v) in enumerate(suite):
+        cumul += v - (suite[i - 7][1] if i >= 7 else 0)
+        if i >= min(6, len(suite) - 1) and cumul > semaine:
+            semaine, fin_semaine = cumul, i
+
     return {
+        "jours": jours,
+        "semaine": (semaine, suite[max(0, fin_semaine - 6)][0].isoformat(),
+                    suite[fin_semaine][0].isoformat()),
         "total": total,
         "record": actifs[date_record],
         "record_date": date_record,
@@ -498,7 +516,254 @@ def carte_activite(r, p):
     return "\n".join(o) + "\n"
 
 
-CARTES = (("serie", carte_serie), ("records", carte_records), ("activite", carte_activite))
+# ------------------------------------------------------------------- skyline
+#
+# Portage statique de « Contribution Skyline » (21st.dev, @kedhareswer) : une
+# année de contributions vue en isométrique, un cube par jour, haut comme
+# l'activité de ce jour-là. L'original est un composant React dessiné sur
+# canvas. Un README n'exécutant aucun JavaScript, tout ce qui demandait une
+# interaction disparaît — rotation, survol, bascule 2D/3D. Ce qui se dit en SVG
+# pur reste : la même caméra, le même ordre de peinture, les trois faces
+# ombrées, et la montée des barres en vague du plus ancien au plus récent,
+# rejouée en SMIL au chargement de l'image.
+
+SKY_CS = SKY_SN = math.cos(math.radians(45))   # lacet de la caméra
+SKY_SE = math.sin(math.radians(34))            # élévation
+SKY_CE = math.cos(math.radians(34))
+SKY_CUBE = 0.9         # côté d'un cube en cases ; le reste fait le joint
+SKY_HAUT = 7.2         # hauteur de la journée record, en cases
+SKY_DALLE = 0.2        # épaisseur d'une journée vide
+SKY_ATTENTE = 0.35     # avant que la vague parte, en secondes
+SKY_DUREE = 1.4        # durée de la vague
+SKY_VAGUE = 0.42       # part de la vague passée à attendre son tour
+SKY_SCENE = (28, 58, 872, 548)   # zone de dessin : x0, y0, x1, y1
+
+# Cinq teintes par thème : journée vide, puis quatre niveaux d'activité. L'or
+# du profil en est le sommet ; en clair l'ordre s'inverse, la plus forte
+# activité est la plus sombre, comme sur le graphe de GitHub.
+SKY_NIVEAUX = {
+    DARK["bg"]: ("#23262B", "#4A3F2A", "#7D6639", "#B0904F", "#E0C27F"),
+    LIGHT["bg"]: ("#EAE5DA", "#E8D5A6", "#CFAA5C", "#A27C33", "#6B501D"),
+}
+
+
+def _teinte(hexa, facteur):
+    r, g, b = (int(hexa[i:i + 2], 16) for i in (1, 3, 5))
+    return "#%02X%02X%02X" % tuple(int(round(c * facteur)) for c in (r, g, b))
+
+
+def _hauteur(n, record):
+    """Racine carrée plutôt que linéaire. Une journée record à 322 contre des
+    journées ordinaires à 10-20 réduirait tout le reste à une plaine sous une
+    seule tour — c'est exactement ce qui avait rendu le premier graphique
+    d'activité illisible. La couleur, elle, garde l'échelle des niveaux."""
+    return 0.4 + SKY_HAUT * math.sqrt(n / record) if n > 0 and record > 0 else SKY_DALLE
+
+
+def _niveau(n, seuil):
+    """0 pour une journée vide, sinon 1 à 4 par quarts du 95e centile : une
+    seule journée hors norme ne doit pas renvoyer toutes les autres au niveau 1."""
+    if n <= 0:
+        return 0
+    return 4 if seuil <= 0 else 1 + min(3, int(n / seuil * 4))
+
+
+def _grille(jours):
+    """Cinquante-trois semaines finissant sur la dernière journée connue — celle
+    du fuseau du compte, comme le graphe du profil. Lundi en haut de colonne."""
+    fin = _jour(max(jours))
+    debut = fin - timedelta(days=364)
+    debut -= timedelta(days=debut.weekday())
+    cases, d, i = [], debut, 0
+    while d <= fin:
+        cases.append((d, jours.get(d.isoformat(), 0), i // 7, i % 7))
+        d += timedelta(days=1)
+        i += 1
+    return cases
+
+
+def _proj(x, y, z):
+    return (x * SKY_CS - y * SKY_SN, (x * SKY_SN + y * SKY_CS) * SKY_SE - z * SKY_CE)
+
+
+def _pts(points):
+    return " ".join("%.1f,%.1f" % p for p in points)
+
+
+def _faces(x0, y0, z, ecran):
+    """Les trois faces visibles d'un cube : droite (+x), gauche (+y), dessus."""
+    x1, y1 = x0 + SKY_CUBE, y0 + SKY_CUBE
+    return (
+        [ecran(x1, y0, 0), ecran(x1, y1, 0), ecran(x1, y1, z), ecran(x1, y0, z)],
+        [ecran(x0, y1, 0), ecran(x1, y1, 0), ecran(x1, y1, z), ecran(x0, y1, z)],
+        [ecran(x0, y0, z), ecran(x1, y0, z), ecran(x1, y1, z), ecran(x0, y1, z)],
+    )
+
+
+def _bloc(x, y, ancre, label, valeur, unite, detail, p, icone=False):
+    """Un chiffre en coin, à la manière de l'original : intitulé, grand
+    chiffre suivi de son unité sur la même ligne de base, détail dessous.
+    Tout est aligné sur le bord du bloc ; l'unité suit le chiffre dans le même
+    <text>, ce qui évite d'avoir à mesurer la largeur des glyphes."""
+    o, lx = [], x
+    if icone:
+        # flamme de la série en cours, devant l'intitulé (blocs alignés à gauche)
+        o.append('  <path d="%s" transform="translate(%.1f,%.1f) scale(0.78)" fill="%s"/>'
+                 % (FLAMME, x, y - 12.6, p["gold"]))
+        lx = x + 18
+    o.append('  <text x="%.1f" y="%.1f" text-anchor="%s" font-family="%s" font-size="13" '
+             'fill="%s">%s</text>' % (lx, y, ancre, SANS, p["muted"], esc(label)))
+    o.append('  <text x="%.1f" y="%.1f" text-anchor="%s" font-family="%s">'
+             '<tspan font-size="48" font-weight="700" letter-spacing="-1" fill="%s">%s</tspan>'
+             '<tspan dx="9" font-size="15" fill="%s">%s</tspan></text>'
+             % (x, y + 50, ancre, SANS, p["gold"], esc(valeur), p["text"], esc(unite)))
+    o.append('  <text x="%.1f" y="%.1f" text-anchor="%s" font-family="%s" font-size="11" '
+             'fill="%s">%s</text>' % (x, y + 72, ancre, MONO, p["dim"], esc(detail)))
+    return o
+
+
+def carte_skyline(r, p):
+    cases = _grille(r["jours"])
+    semaines = cases[-1][2] + 1
+    actifs = sorted(n for _, n, _, _ in cases if n > 0)
+    seuil = actifs[int(0.95 * (len(actifs) - 1))] if actifs else 0
+    record = actifs[-1] if actifs else 0
+    marge = (1 - SKY_CUBE) / 2
+
+    # Cadrage : la scène entière, barres à pleine hauteur et rangée des mois
+    # comprises, ajustée à la zone de dessin puis centrée.
+    xs, ys = [], []
+    for _, n, w, d in cases:
+        for (sx, sy) in (_proj(w, d, 0), _proj(w + 1, d, 0), _proj(w, d + 1, 0),
+                         _proj(w + 1, d + 1, 0), _proj(w, d, _hauteur(n, record))):
+            xs.append(sx)
+            ys.append(sy)
+    for w in (0, semaines):
+        sx, sy = _proj(w, 8.6, 0)
+        xs.append(sx)
+        ys.append(sy)
+    X0, Y0, X1, Y1 = SKY_SCENE
+    s = min((X1 - X0) / (max(xs) - min(xs)), (Y1 - Y0) / (max(ys) - min(ys)))
+    ox = X0 + ((X1 - X0) - (max(xs) - min(xs)) * s) / 2 - min(xs) * s
+    oy = Y0 + ((Y1 - Y0) - (max(ys) - min(ys)) * s) / 2 - min(ys) * s
+
+    def ecran(x, y, z):
+        sx, sy = _proj(x, y, z)
+        return (ox + sx * s, oy + sy * s)
+
+    H = Y1 + 52
+    o = cadre(900, H, "Skyline", p, r)
+    teintes = SKY_NIVEAUX[p["bg"]]
+
+    # Une face latérale est l'image d'un rectangle unité par un cisaillement
+    # vertical. La pente de son arête basse et sa largeur ne dépendent que de
+    # la caméra ; d'un jour à l'autre seule la hauteur change. C'est donc le
+    # seul nombre à animer, et il passe par une variable CSS.
+    pente = math.degrees(math.atan(SKY_SE))
+    l_droite, l_gauche = SKY_SN * s * SKY_CUBE, SKY_CS * s * SKY_CUBE
+    h_dalle = SKY_DALLE * SKY_CE * s
+    montee = (1 - SKY_VAGUE) * SKY_DUREE
+
+    regles = "".join(".d%d{fill:%s}.g%d{fill:%s}.t%d{fill:%s}"
+                     % (k, _teinte(t, 0.68), k, _teinte(t, 0.84), k, t)
+                     for k, t in enumerate(teintes))
+    # Animations CSS plutôt que SMIL : SMIL ignore prefers-reduced-motion, il
+    # aurait fallu doubler chaque barre d'une jumelle immobile. Ici le
+    # mouvement réduit se coupe d'une ligne, et chaque élément porte sa
+    # géométrie finale en attribut — ce qu'affiche aussi un moteur sans CSS.
+    o.append("  <style>%s"
+             ".m,.u{animation:%.2fs cubic-bezier(.33,1,.68,1) var(--t) both}"
+             ".m{animation-name:m}.u{animation-name:u}"
+             "@keyframes m{from{transform:scale(1,%.2f)}to{transform:scale(1,var(--h))}}"
+             "@keyframes u{from{transform:translate(0,var(--d))}to{transform:translate(0,0)}}"
+             "@media (prefers-reduced-motion:reduce){.m,.u{animation:none}}</style>"
+             % (regles, montee, h_dalle))
+
+    # Une journée vide est la même dalle partout : dessinée une fois, réutilisée.
+    bx, by = ecran(marge, marge, 0)
+    o.append('  <defs><g id="v">' + "".join(
+        '<polygon class="%s" points="%s"/>' % (c, _pts([(x - bx, y - by) for x, y in f]))
+        for c, f in zip(("d0", "g0", "t0"), _faces(marge, marge, SKY_DALLE, ecran)))
+        + '</g></defs>')
+
+    # Ordre du peintre : du plus loin au plus proche de la caméra. La vague
+    # part de la semaine la plus ancienne, avec un léger décalage par jour.
+    ordre = sorted(cases, key=lambda c: ((c[2] + 0.5) * SKY_SN + (c[3] + 0.5) * SKY_CS, c[2]))
+    for _, n, w, d in ordre:
+        x0, y0 = w + marge, d + marge
+        if n <= 0:
+            ux, uy = ecran(x0, y0, 0)
+            o.append('  <use href="#v" x="%.1f" y="%.1f"/>' % (ux, uy))
+            continue
+        k, z = _niveau(n, seuil), _hauteur(n, record)
+        h = z * SKY_CE * s
+        t = SKY_ATTENTE + ((w / max(1, semaines - 1)) * 0.36 + (d / 6) * 0.06) * SKY_DUREE
+        rx, ry = ecran(x0 + SKY_CUBE, y0, 0)
+        gx, gy = ecran(x0, y0 + SKY_CUBE, 0)
+        o.append(
+            '  <g style="--h:%.1f;--d:%.1fpx;--t:%.2fs">'
+            '<g transform="translate(%.1f,%.1f) skewY(%.2f)"><rect class="d%d m" x="%.1f" '
+            'y="-1" width="%.1f" height="1" transform="scale(1,%.1f)"/></g>'
+            '<g transform="translate(%.1f,%.1f) skewY(%.2f)"><rect class="g%d m" '
+            'y="-1" width="%.1f" height="1" transform="scale(1,%.1f)"/></g>'
+            '<polygon class="t%d u" points="%s"/></g>'
+            % (h, h - h_dalle, t,
+               rx, ry, -pente, k, -l_droite, l_droite, h,
+               gx, gy, pente, k, l_gauche, h,
+               k, _pts(_faces(x0, y0, z, ecran)[2])))
+
+    # Mois, sous l'arête avant, alignés à droite sur la première semaine de
+    # chacun : ils débordent ainsi vers le vide en contrebas, jamais sur les
+    # cubes des semaines suivantes.
+    mois, prec = [], None
+    for w in range(semaines):
+        jour = cases[w * 7][0]
+        if jour.month != prec:
+            mois.append((w, ABBR[jour.month - 1]))
+        prec = jour.month
+    if len(mois) > 1 and mois[1][0] - mois[0][0] < 3:
+        mois.pop(0)
+    for w, lab in mois:
+        x, y = ecran(w + 0.5, 7.2, 0)
+        if x - len(lab) * 6.1 < X0 - 12:
+            continue
+        o.append('  <text x="%.1f" y="%.1f" text-anchor="end" font-family="%s" font-size="10" '
+                 'fill="%s">%s</text>' % (x - 2, y + 11, MONO, p["dim"], esc(lab)))
+
+    # Les quatre chiffres, dans les deux coins que la diagonale laisse vides.
+    def unite(v, mot):
+        return mot if v <= 1 else mot + "s"
+
+    nc, c1, c2 = r["courante"]
+    nl, l1, l2 = r["longue"]
+    o += _bloc(X1 - 4, Y0 + 22, "end", "Total", fr(r["total"]),
+               unite(r["total"], "contribution"), "depuis le %s" % jour_fr(r["premier"]), p)
+    o += _bloc(X1 - 4, Y0 + 122, "end", "Record en une journée", fr(r["record"]),
+               unite(r["record"], "contribution"), jour_fr(r["record_date"]), p)
+    o += _bloc(X0 + 4, Y1 - 172, "start", "Plus longue série", fr(nl), unite(nl, "jour"),
+               "%s – %s" % (court(l1), court(l2)) if nl else "—", p)
+    o += _bloc(X0 + 4, Y1 - 72, "start", "Série actuelle", fr(nc), unite(nc, "jour"),
+               "%s – %s" % (court(c1), court(c2)) if nc else "—", p, icone=True)
+
+    # Pied : ce que montre la carte, et la légende des niveaux.
+    yp = Y1 + 30
+    o.append('  <text x="%d" y="%d" font-family="%s" font-size="10.5" fill="%s">'
+             '12 derniers mois · un cube par jour</text>' % (X0, yp, MONO, p["muted"]))
+    xd = X1 - 6.3 * 4
+    o.append('  <text x="%d" y="%d" text-anchor="end" font-family="%s" font-size="10.5" '
+             'fill="%s">Plus</text>' % (X1, yp, MONO, p["dim"]))
+    for k in range(4, -1, -1):
+        xd -= 8 + 11 if k == 4 else 4 + 11
+        o.append('  <rect x="%.1f" y="%d" width="11" height="11" rx="2" fill="%s"/>'
+                 % (xd, yp - 9.5, teintes[k]))
+    o.append('  <text x="%.1f" y="%d" text-anchor="end" font-family="%s" font-size="10.5" '
+             'fill="%s">Moins</text>' % (xd - 8, yp, MONO, p["dim"]))
+    o.append('</svg>')
+    return "\n".join(o) + "\n"
+
+
+CARTES = (("serie", carte_serie), ("records", carte_records), ("activite", carte_activite),
+          ("skyline", carte_skyline))
 
 
 def main():

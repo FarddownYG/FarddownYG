@@ -197,6 +197,63 @@ for nom, rendu in bs.CARTES:
             ok, detail = False, str(e)
         verifie("%s : SVG valide" % nom, ok, detail)
 
+# --- 5. Skyline --------------------------------------------------------------
+print("Skyline")
+import re
+
+# La grille s'arrête sur la dernière journée connue, y compris celle déjà
+# commencée dans le fuseau du compte, et commence un lundi.
+j5 = {(fin - timedelta(days=i)).isoformat(): (i % 4) for i in range(400)}
+j5[(fin + timedelta(days=1)).isoformat()] = 2
+cases = bs._grille(j5)
+verifie("la grille finit sur la dernière journée connue",
+        cases[-1][0] == fin + timedelta(days=1), "fin : %s" % cases[-1][0])
+verifie("la grille commence un lundi", cases[0][0].weekday() == 0,
+        "début : %s" % cases[0][0])
+verifie("la grille couvre un an", 365 <= len(cases) <= 371, "%d cases" % len(cases))
+
+# Hauteurs : la journée record ne doit pas aplatir le reste. Avec une échelle
+# linéaire, une journée ordinaire à 15 ferait 5 % de la tour record à 322 ;
+# c'est ce qui avait rendu illisible le premier graphique d'activité.
+verifie("une journée vide est une dalle", bs._hauteur(0, 322) == bs.SKY_DALLE)
+rapport = bs._hauteur(15, 322) / bs._hauteur(322, 322)
+verifie("une journée ordinaire reste lisible face au record", rapport >= 0.25,
+        "rapport : %.2f" % rapport)
+
+# Niveaux : une seule journée hors norme ne renvoie pas les autres au niveau 1.
+actifs = sorted([10] * 99 + [1000])
+seuil = actifs[int(0.95 * (len(actifs) - 1))]
+verifie("une journée hors norme n'écrase pas les niveaux", bs._niveau(10, seuil) == 4,
+        "niveau : %d" % bs._niveau(10, seuil))
+verifie("une journée vide est au niveau 0", bs._niveau(0, seuil) == 0)
+
+# Meilleure semaine : sept jours glissants, même à cheval sur deux semaines
+# civiles. Le bloc fort va du jeudi au mercredi suivant.
+jeudi = fin - timedelta(days=(fin.weekday() - 3) % 7 + 21)
+j6 = {(fin - timedelta(days=i)).isoformat(): 1 for i in range(60)}
+for i in range(7):
+    j6[(jeudi + timedelta(days=i)).isoformat()] = 50
+sem = bs.stats(j6)["semaine"]
+verifie("la meilleure semaine est la fenêtre glissante la plus forte",
+        sem == (350, jeudi.isoformat(), (jeudi + timedelta(days=6)).isoformat()),
+        "obtenu : %s" % (sem,))
+
+# La carte elle-même. Chaque barre animée porte sa géométrie finale en
+# attribut : c'est elle qu'affiche un moteur sans CSS, ou un visiteur en
+# mouvement réduit. L'animation ne fait que partir d'une dalle pour y revenir.
+svg = bs.carte_skyline(bs.stats(bs.calendrier_demo()), bs.DARK)
+verifie("l'horodatage est présent (l'empreinte en dépend)", "mis à jour le" in svg)
+verifie("le mouvement réduit coupe l'animation",
+        "@media (prefers-reduced-motion:reduce){.m,.u{animation:none}}" in svg)
+barres = re.findall(r'<g style="--h:([\d.]+);[^"]*">(.*?)<polygon', svg)
+coherent = barres and all(
+    re.findall(r'scale\(1,([\d.]+)\)', corps) == [h, h] for h, corps in barres)
+verifie("chaque barre porte sa hauteur finale en attribut", bool(coherent),
+        "%d barres" % len(barres))
+nb_actifs = sum(1 for _, n, _, _ in bs._grille(bs.calendrier_demo()) if n > 0)
+verifie("une barre animée par journée active", len(barres) == nb_actifs,
+        "%d barres pour %d journées actives" % (len(barres), nb_actifs))
+
 print()
 if echecs:
     print("%d vérification(s) en échec : %s" % (len(echecs), ", ".join(echecs)))
