@@ -24,6 +24,9 @@ on:
     branches: [main]
     paths:
       - tools/build-stats.py
+      - tools/dessin.py
+      - tools/typo.py
+      - tools/glyphes.json
       - tools/boucle-stats.sh
       - tools/empreinte.py
       - tools/test-stats.py

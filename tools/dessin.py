@@ -7,7 +7,9 @@ cartes de statistiques (build-stats.py) et aux planches fixes
 
 Python pur, sans dépendance : ce module tourne dans la CI.
 """
+import json
 import math
+import os
 
 from typo import Typo, _n
 
@@ -100,24 +102,35 @@ def lisse(points, ferme=False):
     pts = [(q[0], q[1], len(q) > 2) for q in points]
     if ferme:
         pts.append((pts[0][0], pts[0][1], True))
-    d = ["M%.1f,%.1f" % pts[0][:2]]
+    d = ["M%s,%s" % (_d(pts[0][0]), _d(pts[0][1]))]
     debut = 0
     for i in range(1, len(pts)):
         if not (pts[i][2] or i == len(pts) - 1):
             continue
         troncon = pts[debut:i + 1]
         if len(troncon) == 2:
-            d.append("L%.1f,%.1f" % troncon[1][:2])
+            d.append("L%s,%s" % (_d(troncon[1][0]), _d(troncon[1][1])))
         else:
             for j in range(len(troncon) - 1):
                 p0 = troncon[max(j - 1, 0)]
                 p1, p2 = troncon[j], troncon[j + 1]
                 p3 = troncon[min(j + 2, len(troncon) - 1)]
-                d.append("C%.1f,%.1f %.1f,%.1f %.1f,%.1f" % (
-                    p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0,
-                    p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0, p2[0], p2[1]))
+                fin = "%s,%s %s,%s" % (_d(p2[0] - (p3[0] - p1[0]) / 6.0), _d(p2[1] - (p3[1] - p1[1]) / 6.0),
+                                       _d(p2[0]), _d(p2[1]))
+                if j:
+                    # la première poignée est le reflet de la précédente : « S » la sous-entend
+                    d.append("S" + fin)
+                else:
+                    d.append("C%s,%s %s" % (_d(p1[0] + (p2[0] - p0[0]) / 6.0),
+                                            _d(p1[1] + (p2[1] - p0[1]) / 6.0), fin))
         debut = i
     return "".join(d) + ("Z" if ferme else "")
+
+
+def _d(v):
+    """Coordonnée au dixième, sans zéro inutile."""
+    t = "%.1f" % v
+    return t[:-2] if t.endswith(".0") else t
 
 
 def guilloche(cx, cy, R, k, creux, tours=1, pas=720):
@@ -212,9 +225,38 @@ def cadre(f, etiquette, maj=None, rayon=14):
         _n(w - 1.2), _n(h - 1.2), rayon, p["fond"], p["trait"])
     f += '<rect x="6.5" y="6.5" width="%s" height="%s" rx="%d" fill="none" stroke="%s" stroke-width="0.7" opacity="0.32"/>' % (
         _n(w - 13), _n(h - 13), rayon - 5, p["o"])
-    f += f.texte("mono-gras", "// " + etiquette.upper(), 11, 28, 39, approche=3, fill=p["o"])
+    if etiquette:
+        f += f.texte("mono-gras", "// " + etiquette.upper(), 11, 28, 39, approche=3, fill=p["o"])
     if maj:
         f += f.texte("mono", maj, 9.5, w - 28, 39, ancre="end", fill=p["discret"], attrs='id="maj"')
+
+
+_EMBLEME = None
+
+
+def embleme(f, x, y, h, attributs=None):
+    """Pose l'as de pique en filigrane : sa boîte 1000×1200 est ramenée à la
+    hauteur h, coin haut-gauche en (x, y).
+
+    Le dessin vient de embleme.json (produit par build-embleme.py). Chaque
+    couche est définie une fois dans les <defs> et rappelée par <use> — deux
+    fois quand elle a un miroir : la moitié droite n'est jamais stockée.
+    attributs(couche) renvoie les attributs à ajouter à ses <use> (classe
+    d'animation, retard), ou une chaîne vide."""
+    global _EMBLEME
+    if _EMBLEME is None:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "embleme.json"), encoding="utf-8") as fh:
+            _EMBLEME = json.load(fh)
+    o = ['<g transform="translate(%s %s) scale(%s)">' % (_n(x), _n(y), ("%.5f" % (h / 1200.0)).rstrip("0"))]
+    for k, c in enumerate(_EMBLEME["couches"]):
+        f.definis('<g id="e%d" fill="currentColor">%s</g>' % (k, c["svg"]))
+        plus = attributs(c) if attributs else ""
+        ton = f.p["o"] if c["ton"] == "or" else f.p["encre"]
+        o.append('<use href="#e%d" color="%s"%s/>' % (k, ton, plus))
+        if c["miroir"]:
+            o.append('<use href="#e%d" color="%s" transform="matrix(-1 0 0 1 1000 0)"%s/>' % (k, ton, plus))
+    o.append("</g>")
+    return "".join(o)
 
 
 def horodatage(dt, court=False):

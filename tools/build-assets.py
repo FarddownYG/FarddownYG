@@ -18,7 +18,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dessin import (PALETTES, Feuille, arc, cadre, lisse, melange, pique, polaire)  # noqa: E402
+from dessin import (PALETTES, PIQUE, Feuille, arc, cadre, embleme, lisse, melange, pique, polaire)  # noqa: E402
 from typo import _n  # noqa: E402
 
 SANS_ANIM = "@media (prefers-reduced-motion:reduce){%s{animation:none}}"
@@ -362,7 +362,145 @@ def planche_r32(p, mobile=False):
     return f.rendu()
 
 
-PLANCHES = (("r32", planche_r32),)
+# ------------------------------------------------------------------- héros
+
+CREDO = "« Celui qui tire doit être prêt à recevoir la balle. »"
+
+
+def _index(f, x, y):
+    """L'indice de coin d'une carte à jouer : un A, un pique dessous."""
+    p = f.p
+    return [f.texte("titre", "A", 29, x, y, ancre="middle", fill=p["encre"]), pique(x, y + 19, 18, p["o"])]
+
+
+def _entree_embleme(c):
+    """Le filigrane se monte comme chez l'orfèvre : pourtour, ossature, puis la
+    dentelle du cœur vers les bords. Les grains d'or scintillent ensuite."""
+    nom = c["nom"]
+    if nom in ("cordon", "perles", "perle-axe", "lisere"):
+        t, scintille = 0.1, False
+    elif nom in ("axe", "grains-medaillon", "pique"):
+        t, scintille = 0.35, False
+    elif nom == "volutes":
+        t, scintille = 0.6, False
+    else:
+        rang = int(nom.rsplit("-", 1)[1])
+        t, scintille = 0.85 + rang * 0.13, nom.startswith("grains-")
+    if scintille:
+        return ' class="em sc" style="animation-delay:%ss,%ss"' % (_n(t), _n(3 + (rang * 5 % 8) * 0.7))
+    return ' class="em" style="animation-delay:%ss"' % _n(t)
+
+
+def planche_heros(p, mobile=False):
+    W, H = (450, 692) if mobile else (900, 470)
+    f = Feuille(W, H, p, "Yanis — l’as de pique",
+                "Un as de pique en filigrane, crème et or sur noir. Yanis : ingénieur cybersécurité, fondateur de "
+                "Classor, développeur de jeux vidéo, de logiciels et d'outils. Depuis toujours : coder des outils, "
+                "en vivre. " + CREDO + " — Lelouch, Code Geass.")
+    cadre(f, None)
+    sombre = p["nom"] == "dark"
+    f.definis('<radialGradient id="lu"><stop offset="0" stop-color="%s" stop-opacity="%s"/>'
+              '<stop offset="1" stop-color="%s" stop-opacity="0"/></radialGradient>'
+              % (p["o"], "0.16" if sombre else "0.13", p["o"]))
+    f.style(".em{animation:em 1.1s ease-out both}@keyframes em{from{opacity:0}}"
+            ".sc{animation:em 1.1s ease-out both,sc 5.6s ease-in-out infinite}@keyframes sc{50%{opacity:.35}}"
+            ".n{animation:n .8s cubic-bezier(.2,.8,.2,1) both}"
+            "@keyframes n{from{opacity:0;transform:translateY(260px)}}"
+            ".ec{stroke-dasharray:.05 .95;animation:ec 9s linear 2.4s infinite both}"
+            "@keyframes ec{from{stroke-dashoffset:1;opacity:0}6%{opacity:1}94%{opacity:1}"
+            "to{stroke-dashoffset:0;opacity:0}}")
+    f.style(SANS_ANIM % ".em,.sc,.n,.ec")
+    f.style("@media (prefers-reduced-motion:reduce){.ec{opacity:0}}")
+
+    def apparait(t):
+        return 'class="em" style="animation-delay:%ss"' % _n(t)
+
+    # la carte : indices aux deux coins opposés, l'un tête en bas
+    coin = _index(f, 43, 61) if not mobile else _index(f, 39, 57)
+    f += '<g %s>%s<g transform="rotate(180 %s %s)">%s</g></g>' % (
+        apparait(0.2), "".join(coin), _n(W / 2.0), _n(H / 2.0), "".join(coin))
+
+    if mobile:
+        eh, ex, ey = 330.0, (W - 275.0) / 2, 44.0
+    else:
+        eh, ex, ey = 400.0, 54.0, 35.0
+    k = eh / 1200.0
+    f += '<circle cx="%s" cy="%s" r="%s" fill="url(#lu)"/>' % (_n(ex + 500 * k), _n(ey + 610 * k), _n(eh * 0.52))
+    f += embleme(f, ex, ey, eh, _entree_embleme)
+    # une étincelle fait le tour du cordon
+    f += ('<path d="%s" transform="translate(%s %s) scale(%s)" fill="none" stroke="%s" stroke-width="7" '
+          'stroke-linecap="round" pathLength="1" class="ec"/>'
+          % (PIQUE, _n(ex), _n(ey), ("%.5f" % k).rstrip("0"), p["o_haut"]))
+
+    if mobile:
+        cx = W / 2.0
+        f += f.texte("titre", "YANIS", 74, cx, 452, ancre="middle", approche=3, fill=p["encre"], cascade=(0.7, 0.09))
+        f += '<rect x="%s" y="470" width="44" height="2" rx="1" fill="%s" %s/>' % (_n(cx - 22), p["o"], apparait(1.3))
+        f += f.texte("texte", "Ingénieur cybersécurité", 18.5, cx, 506, ancre="middle", fill=p["encre"],
+                     attrs=apparait(1.4))
+        wa = f.largeur("texte", "Fondateur de ", 18.5)
+        wb = f.largeur("texte", "Classor", 18.5)
+        f += f.texte("texte", "Fondateur de ", 18.5, cx - (wa + wb) / 2, 531, fill=p["encre"], attrs=apparait(1.5))
+        f += f.texte("texte", "Classor", 18.5, cx - (wa + wb) / 2 + wa, 531, fill=p["o"], attrs=apparait(1.5))
+        f += f.texte("mono", "JEUX VIDÉO · LOGICIELS · OUTILS", 9.4, cx, 561, ancre="middle", approche=2,
+                     fill=p["doux"], attrs=apparait(1.6))
+        f += f.texte("ital", "Depuis toujours : coder des outils, en vivre.", 14.6, cx, 584, ancre="middle",
+                     fill=p["doux"], attrs=apparait(1.7))
+        f += '<path d="M60,606H%s" stroke="%s" stroke-width="1" %s/>' % (_n(W - 60), p["trait"], apparait(1.8))
+        f += f.texte("ital", CREDO, 13.6, cx, 632, ancre="middle", fill=p["encre"], attrs=apparait(1.9))
+        f += f.texte("mono", "— LELOUCH, CODE GEASS", 8.2, cx, 652, ancre="middle", approche=1.8,
+                     fill=p["discret"], attrs=apparait(2.0))
+    else:
+        x0, x1 = 430.0, 792.0
+        f += '<g %s>%s%s</g>' % (
+            apparait(0.5), pique(x0 + 6, 96.5, 13, p["o"]),
+            f.texte("mono-gras", "FARDDOWNYG  ·  AS DE PIQUE", 10.4, x0 + 20, 100, approche=3.2, fill=p["o"]))
+        f += f.texte("titre", "YANIS", 106, x0 - 5, 200, approche=4, fill=p["encre"], cascade=(0.7, 0.09))
+        f += '<rect x="%s" y="224" width="52" height="2.4" rx="1.2" fill="%s" %s/>' % (_n(x0), p["o"], apparait(1.3))
+        f += f.texte("texte", "Ingénieur cybersécurité", 22, x0, 268, fill=p["encre"], attrs=apparait(1.4))
+        wa = f.largeur("texte", "Fondateur de ", 22)
+        f += f.texte("texte", "Fondateur de ", 22, x0, 298, fill=p["encre"], attrs=apparait(1.5))
+        f += f.texte("texte", "Classor", 22, x0 + wa, 298, fill=p["o"], attrs=apparait(1.5))
+        f += f.texte("mono", "JEUX VIDÉO · LOGICIELS · OUTILS", 9.8, x0, 332, approche=2.4, fill=p["doux"],
+                     attrs=apparait(1.6))
+        f += f.texte("ital", "Depuis toujours : coder des outils, en vivre.", 16, x0, 357, fill=p["doux"],
+                     attrs=apparait(1.7))
+        f += '<path d="M%s,381H%s" stroke="%s" stroke-width="1" %s/>' % (_n(x0), _n(x1), p["trait"], apparait(1.8))
+        f += f.texte("ital", CREDO, 15, x0, 408, fill=p["encre"], attrs=apparait(1.9))
+        f += f.texte("mono", "— LELOUCH, CODE GEASS", 8.6, x0, 428, approche=1.8, fill=p["discret"],
+                     attrs=apparait(2.0))
+    return f.rendu()
+
+
+def planche_signature(p, mobile=False):
+    """Le mot de la fin, sans cadre : il se pose sur le fond de la page."""
+    W, H = (450, 92) if mobile else (900, 92)
+    f = Feuille(W, H, p, "Une lame s’affûte tous les jours", "Signature du profil : un petit pique entre deux filets.")
+    cx = W / 2.0
+    demi = 150 if mobile else 300
+    f.definis('<linearGradient id="fg" x1="0" x2="1"><stop offset="0" stop-color="%s" stop-opacity="0"/>'
+              '<stop offset="1" stop-color="%s"/></linearGradient>' % (p["o"], p["o"]))
+    f += '<rect x="%s" y="29.5" width="%s" height="1" fill="url(#fg)"/>' % (_n(cx - demi), _n(demi - 22))
+    f += '<rect x="%s" y="29.5" width="%s" height="1" fill="url(#fg)" transform="rotate(180 %s 30)"/>' % (
+        _n(cx - demi), _n(demi - 22), _n(cx))
+    f += pique(cx, 30, 20, p["o"])
+    f += '<circle cx="%s" cy="30" r="1.6" fill="%s"/><circle cx="%s" cy="30" r="1.6" fill="%s"/>' % (
+        _n(cx - 17), p["o"], _n(cx + 17), p["o"])
+    f += f.texte("ital", "une lame s’affûte tous les jours", 16, cx, 66, ancre="middle", fill=p["o"])
+    return f.rendu()
+
+
+def avatar(p):
+    """La photo de profil : le filigrane seul, cadré pour un recadrage en disque."""
+    f = Feuille(1024, 1024, p, "As de pique", "L'as de pique en filigrane, crème et or sur noir.")
+    f.definis('<radialGradient id="av" cx="0.5" cy="0.46" r="0.62"><stop offset="0" stop-color="%s"/>'
+              '<stop offset="1" stop-color="%s"/></radialGradient>' % (melange(p["fond"], p["o"], 0.10), p["creux"]))
+    f += '<rect width="1024" height="1024" fill="url(#av)"/>'
+    f += embleme(f, 512 - 880 / 2.4, 66, 880)
+    return f.rendu()
+
+
+PLANCHES = (("heros", planche_heros), ("r32", planche_r32), ("signature", planche_signature))
 
 
 def rendus(seulement=()):
@@ -372,6 +510,8 @@ def rendus(seulement=()):
         for mobile in (False, True):
             for p in PALETTES:
                 yield "%s%s-%s.svg" % (nom, "-m" if mobile else "", p["nom"]), planche(p, mobile)
+    if not seulement or "avatar" in seulement:
+        yield "avatar.svg", avatar(PALETTES[0])
 
 
 def main():

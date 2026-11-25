@@ -216,20 +216,76 @@ verifie("la plus longue série est bien la plus longue", longue2[0] == 10,
 
 # --- 4. Les cartes sortent en SVG valide -------------------------------------
 print("Génération des cartes")
+import hashlib
+import re
+import subprocess
 import xml.dom.minidom
+
+SOMBRE, CLAIR = bs.PALETTES
+NNBSP = " "
+
+
+def chiffres(svg):
+    """Les grands chiffres d'une carte, relus dans le dessin lui-même.
+
+    Le texte est tracé glyphe par glyphe : l'identifiant de chaque glyphe porte
+    le code du caractère. Les chiffres animés (classe « n ») sont les valeurs."""
+    lus = []
+    for groupe in re.findall(r'<g transform="translate[^>]*>((?:<use [^>]*/>)+)</g>', svg):
+        if 'class="n"' in groupe:
+            lus.append("".join(chr(int(h, 16)) for h in re.findall(r'href="#[a-z]([0-9a-f]+)"', groupe)))
+    return lus
+
+
+def nu(n):
+    return bs.fr(n).replace(NNBSP, "")
+
+
 r = bs.stats(bs.calendrier_demo())
-for nom, rendu in bs.CARTES:
-    for pal in (bs.DARK, bs.LIGHT):
-        try:
-            xml.dom.minidom.parseString(rendu(r, pal))
-            ok, detail = True, ""
-        except Exception as e:
-            ok, detail = False, str(e)
-        verifie("%s : SVG valide" % nom, ok, detail)
+sorties = dict(bs.rendus(r))
+attendues = {"%s%s-%s.svg" % (n, m, t)
+             for n in ("skyline", "bord") for m in ("", "-m") for t in ("dark", "light")}
+verifie("deux cartes, deux mises en page, deux thèmes", attendues <= set(sorties),
+        "manquent : %s" % sorted(attendues - set(sorties)))
+for nom, svg in sorted(sorties.items()):
+    try:
+        xml.dom.minidom.parseString(svg)
+        ok, detail = True, ""
+    except Exception as e:
+        ok, detail = False, str(e)
+    verifie("%s : SVG valide" % nom, ok, detail)
+    # Un README montre ses SVG dans une balise <img> : ni police ni ressource
+    # externe n'y sont chargées. Un <text> y retomberait sur la police de
+    # l'appareil, et toute la mise en page calée au pixel partirait de travers.
+    verifie("%s : ni police, ni ressource externe" % nom,
+            "<text" not in svg and "font-family" not in svg and "url(http" not in svg
+            and not re.search(r'(?:href|src)="(?!#)', svg))
+    if nom.startswith(("skyline", "bord")):
+        verifie("%s : largeur de dessin" % nom, 'viewBox="0 0 %d ' % (450 if "-m-" in nom else 900) in svg)
+    verifie("%s : titre et description pour les lecteurs d'écran" % nom,
+            'role="img"' in svg and "<title" in svg and "<desc" in svg)
+    verifie("%s : poids raisonnable" % nom, len(svg.encode("utf-8")) < 220 * 1024,
+            "%d Ko" % (len(svg.encode("utf-8")) // 1024))
+
+# --- 4 bis. Typographie -------------------------------------------------------
+# Le texte est composé en tracés à partir d'un atlas de glyphes. Deux pannes
+# possibles : une largeur fausse (tout ce qui est calé à droite se décale) et un
+# caractère absent de l'atlas (un blanc muet à la place d'une lettre).
+print("Typographie")
+typo = bs.Feuille(10, 10, SOMBRE, "essai").t
+verifie("le mono a une chasse fixe", abs(typo.largeur("mono", "0123", 10) - typo.largeur("mono", "mmmm", 10)) < 1e-6
+        and typo.largeur("mono", "0123", 10) > 20)
+verifie("les chiffres tabulaires occupent tous la même case",
+        abs(typo.largeur("titre", "1111", 40, tab=True) - typo.largeur("titre", "0000", 40, tab=True)) < 1e-6)
+try:
+    typo.largeur("mono", "→", 10)
+    absent = False
+except KeyError:
+    absent = True
+verifie("un caractère absent de l'atlas arrête le rendu au lieu de laisser un blanc", absent)
 
 # --- 5. Skyline --------------------------------------------------------------
 print("Skyline")
-import re
 
 # La grille s'arrête sur la dernière journée connue, y compris celle déjà
 # commencée dans le fuseau du compte, et commence un lundi.
@@ -241,6 +297,13 @@ verifie("la grille finit sur la dernière journée connue",
 verifie("la grille commence un lundi", cases[0][0].weekday() == 0,
         "début : %s" % cases[0][0])
 verifie("la grille couvre un an", 365 <= len(cases) <= 371, "%d cases" % len(cases))
+
+# La page du profil liste déjà le lendemain, à zéro, quand le fuseau du compte
+# a de l'avance sur l'UTC. Tant qu'il est vide, ce n'est pas une journée à
+# montrer : une dalle « demain » au bout de la frise se lit comme un trou.
+j5[(fin + timedelta(days=1)).isoformat()] = 0
+verifie("un lendemain encore vide n'est pas dessiné", bs._grille(j5)[-1][0] == fin,
+        "fin : %s" % bs._grille(j5)[-1][0])
 
 # Hauteurs : la journée record ne doit pas aplatir le reste. Avec une échelle
 # linéaire, une journée ordinaire à 15 ferait 5 % de la tour record à 322 ;
@@ -267,6 +330,9 @@ sem = bs.stats(j6)["semaine"]
 verifie("la meilleure semaine est la fenêtre glissante la plus forte",
         sem == (350, jeudi.isoformat(), (jeudi + timedelta(days=6)).isoformat()),
         "obtenu : %s" % (sem,))
+verifie("les trente derniers jours sont comptés à part", bs.stats(j6)["trente"] == sum(
+    v for k, v in j6.items() if k > (fin - timedelta(days=30)).isoformat()),
+    "obtenu : %s" % bs.stats(j6)["trente"])
 
 # La grille ne recule jamais sous aujourd'hui, même si la dernière journée
 # manque dans les données.
@@ -289,12 +355,15 @@ _date = bs.date
 bs.date = type("D", (date,), {"today": classmethod(lambda c: date(2026, 10, 7))})
 r = bs.stats(bs.calendrier_demo())
 r["calcule"] = datetime(2026, 10, 7, 8, 0, tzinfo=timezone.utc)
-svg = bs.carte_skyline(r, bs.DARK)
+svg = bs.carte_skyline(r, SOMBRE)
+svg_mobile = bs.carte_skyline(r, SOMBRE, True)
+svg_bord = bs.carte_bord(r, SOMBRE)
 cases = bs._grille(r["jours"])
 bs.date = _date
 
 style = re.search(r"<style>(.*?)</style>", svg).group(1)
-verifie("l'horodatage est présent (l'empreinte en dépend)", "mis à jour le" in svg)
+verifie("l'horodatage est isolé dans son groupe (l'empreinte en dépend)",
+        len(re.findall(r'<g[^>]*\bid="maj"[^>]*>(?:<use [^>]*/>)+</g>', svg)) == 1)
 
 # Animation. Une image clé cassée aplatit toutes les barres pour tout visiteur
 # dont le navigateur anime : c'est l'état final qui serait affiché.
@@ -308,9 +377,10 @@ verifie("l'animation part après son délai et garde son état final",
         is not None)
 # Placée avant la règle d'animation, la règle du mouvement réduit serait
 # écrasée par elle : la présence du texte ne suffit pas, l'ordre compte.
-i_anim = style.find(".m,.u{animation:")
-i_reduit = style.find("@media (prefers-reduced-motion:reduce){.m,.u{animation:none}}")
-verifie("le mouvement réduit vient après l'animation et la coupe", 0 <= i_anim < i_reduit,
+i_anim = max(style.find(".m,.u{animation:"), style.find(".n{animation:"))
+i_reduit = style.find("@media (prefers-reduced-motion:reduce){.m,.u,.n{animation:none}}")
+verifie("le mouvement réduit vient après les animations et les coupe",
+        0 <= min(style.find(".m,.u{animation:"), style.find(".n{animation:")) and i_anim < i_reduit,
         "positions : animation %d, mouvement réduit %d" % (i_anim, i_reduit))
 
 barres = re.findall(r'<g style="--h:([\d.]+);--d:(-?[\d.]+)px;--t:([\d.]+)s">(.*?)</g>'
@@ -358,14 +428,30 @@ verifie("ordre du peintre : du fond vers l'avant",
         "%d cases lues sur %d" % (len(bases), len(cases)))
 verifie("une dalle réutilisée par journée vide",
         '<g id="v">' in svg and svg.count('<use href="#v"') == len(cases) - nb_actifs)
-verifie("les mois sont étiquetés",
-        len(re.findall(r'text-anchor="end" font-family="[^"]*" font-size="10" ', svg)) >= 10)
+verifie("les mois sont étiquetés", svg.count('<g class="mois">') >= 10,
+        "%d étiquettes" % svg.count('<g class="mois">'))
 
-# Les quatre chiffres, chacun à sa place.
-chiffres = re.findall(r'<tspan font-size="48"[^>]*>([^<]+)</tspan>', svg)
-attendus = [bs.fr(r["total"]), bs.fr(r["record"]), bs.fr(r["longue"][0]), bs.fr(r["courante"][0])]
+# Les quatre chiffres, chacun à sa place — relus dans le dessin, pas dans la
+# description : c'est le dessin que voit le visiteur.
+attendus = [nu(r["total"]), nu(r["record"]), nu(r["longue"][0]), nu(r["courante"][0])]
 verifie("total, record, plus longue série, série actuelle dans cet ordre",
-        chiffres == attendus, "lus : %s" % chiffres)
+        chiffres(svg) == attendus, "lus : %s" % chiffres(svg))
+verifie("les mêmes chiffres sur mobile", chiffres(svg_mobile) == attendus, "lus : %s" % chiffres(svg_mobile))
+desc = re.search(r"<desc[^>]*>(.*?)</desc>", svg).group(1)
+verifie("la description les répète pour les lecteurs d'écran",
+        all(bs.fr(v) in desc for v in (r["total"], r["record"], r["longue"][0], r["courante"][0])), desc)
+
+
+def emprises(svg_):
+    """Boîte à l'écran de chaque barre : (x0, y0, x1, y1)."""
+    out = []
+    for h, corps in re.findall(r'<g style="--h:([\d.]+);[^>]*>(.*?)</g>(?=\n|$)', svg_, re.M):
+        pts = [tuple(map(float, q.split(","))) for q in
+               re.search(r'class="t\d u" points="([^"]+)"', corps).group(1).split()]
+        out.append((min(q[0] for q in pts), min(q[1] for q in pts),
+                    max(q[0] for q in pts), max(q[1] for q in pts) + float(h)))
+    return out
+
 
 # Coins réservés. Cas relevé en relecture : un record à cinq chiffres un lundi
 # d'été posait sa tour sous les chiffres du coin haut-droit.
@@ -376,43 +462,87 @@ jc = {(aj - timedelta(days=i)).isoformat(): (8 if i < 270 and i % 3 else 0) for 
 lundi = aj - timedelta(days=16 * 7 + aj.weekday())
 jc[lundi.isoformat()] = 12345
 rc = bs.stats(jc)
-svg_coin = bs.carte_skyline(rc, bs.DARK)
+rc["calcule"] = datetime(2026, 10, 7, 8, 0, tzinfo=timezone.utc)
+svg_coin = bs.carte_skyline(rc, SOMBRE)
+svg_coin_mobile = bs.carte_skyline(rc, SOMBRE, True)
+zones = bs._blocs_skyline(bs.Feuille(900, 600, SOMBRE, "essai"), rc, False)[1]
 bs.date = _date
-X0, Y0, X1, Y1 = bs.SKY_SCENE
-zone = bs._emprise(X1 - 4, Y0 + 122, "end", "Record en une journée", bs.fr(rc["record"]),
-                   "contributions", bs.jour_fr(rc["record_date"]))
-heurts = 0
-for h, corps in re.findall(r'<g style="--h:([\d.]+);[^>]*>(.*?)</g>(?=\n|$)', svg_coin, re.M):
-    pts = [tuple(map(float, q.split(","))) for q in
-           re.search(r'class="t\d u" points="([^"]+)"', corps).group(1).split()]
-    gx, gy = min(q[0] for q in pts), min(q[1] for q in pts)
-    dx, dy = max(q[0] for q in pts), max(q[1] for q in pts) + float(h)
-    heurts += gx < zone[2] and dx > zone[0] and gy < zone[3] and dy > zone[1]
-verifie("aucune barre sous les chiffres du record", heurts == 0, "%d barre(s)" % heurts)
+heurts = sum(1 for b in emprises(svg_coin) for z in zones
+             if b[0] < z[2] and b[2] > z[0] and b[1] < z[3] and b[3] > z[1])
+verifie("aucune barre sous les quatre chiffres, même avec un record à cinq chiffres",
+        len(zones) == 4 and heurts == 0, "%d recouvrement(s)" % heurts)
+X0, Y0, X1, Y1 = bs.SKY_SCENE_MOBILE
+verifie("sur mobile, la scène reste dans sa zone, au-dessus des chiffres",
+        all(X0 - 1 <= b[0] and b[2] <= X1 + 1 and Y0 - 1 <= b[1] and b[3] <= Y1 + 1
+            for b in emprises(svg_coin_mobile)))
 
-# Empreinte. Deux calculs des mêmes données à des heures différentes doivent
-# donner la même empreinte, sinon la boucle republie toutes les deux minutes.
-import subprocess
-empreintes = []
-for heure in (8, 9):
-    r["calcule"] = datetime(2026, 10, 7, heure, 17, tzinfo=timezone.utc)
+# --- 6. Tableau de bord --------------------------------------------------------
+print("Tableau de bord")
+style_b = re.search(r"<style>(.*?)</style>", svg_bord).group(1)
+# Règle de toute la maison : chaque élément porte son état final en attribut,
+# l'animation part d'ailleurs et y revient. Un moteur qui n'anime pas (ou un
+# visiteur en mouvement réduit) voit donc la bonne valeur, jamais l'aiguille
+# au repos.
+aiguilles = re.findall(r'<g class="ag" transform="rotate\((-?[\d.]+)\)" style="--a:(-?[\d.]+)deg;', svg_bord)
+verifie("deux aiguilles, posées sur leur valeur", len(aiguilles) == 2 and all(a == b for a, b in aiguilles),
+        "lues : %s" % aiguilles)
+verifie("le balayage d'allumage finit sur la valeur", "100%{transform:rotate(var(--a))}" in style_b)
+debuts = [style_b.find(".%s{animation:" % c) for c in ("n", "ag", "an", "od")]
+i_reduit = style_b.find("@media (prefers-reduced-motion:reduce){.n,.ag,.an,.od{animation:none}}")
+verifie("le mouvement réduit vient après les quatre animations", min(debuts) >= 0 and max(debuts) < i_reduit,
+        "positions : %s, mouvement réduit %d" % (debuts, i_reduit))
+desc_b = re.search(r"<desc[^>]*>(.*?)</desc>", svg_bord).group(1)
+verifie("la description porte tous les chiffres du tableau",
+        all(bs.fr(v) in desc_b for v in (r["total"], r["semaine"][0], r["mois_total"], r["trente"], r["actifs"])),
+        desc_b)
+# Une aiguille ne sort jamais de son cadran, quelle que soit la valeur.
+for valeur in (0, 1, 7, 99, 100, 101, 529, 9999, 123456):
+    pas_, intervalles = bs._echelle(valeur)
+    verifie("échelle pour %d : la valeur tient dans le cadran" % valeur,
+            pas_ * intervalles >= valeur and 6 <= intervalles <= 10,
+            "pas %s × %s intervalles" % (pas_, intervalles))
+
+# Panne relevée en essai de charge : au-delà de 999 999, le compteur à six
+# rouleaux perdait son chiffre de tête et affichait 400 000 pour 4 400 000.
+feuille = bs.Feuille(900, 440, SOMBRE, "essai")
+rouleaux = "".join(bs._compteur(feuille, 450, 260, 4400000, 6, 30, 40))
+finals = re.findall(r'<g transform="translate\(0 [\d.]+\) scale[^>]*>(?:<use [^>]*/>)*?<use href="#t([0-9a-f]+)"'
+                    r'(?: x="[\d.]+")?/></g>', rouleaux)
+verifie("le compteur garde tous ses chiffres au-delà du million",
+        "".join(chr(int(h, 16)) for h in finals) == "4400000", "lus : %s" % finals)
+
+# --- 7. Empreinte ---------------------------------------------------------------
+# Deux calculs des mêmes données à des heures différentes doivent donner la
+# même empreinte, sinon la boucle republie toutes les deux minutes ; et un
+# chiffre qui bouge doit la changer, sinon elle ne republie jamais.
+print("Empreinte")
+
+
+def empreinte_de(resultat):
     with tempfile.TemporaryDirectory() as tmp:
-        for nom, rendu in bs.CARTES:
-            for pal in (bs.DARK, bs.LIGHT):
-                with open(os.path.join(tmp, "%s-%s.svg" % (nom, "dark" if pal is bs.DARK else "light")),
-                          "w", encoding="utf-8") as f:
-                    f.write(rendu(r, pal))
-        empreintes.append(subprocess.run([sys.executable, os.path.join(ICI, "empreinte.py"), tmp],
-                                         capture_output=True, text=True).stdout.strip())
+        for nom, contenu in bs.rendus(resultat):
+            with open(os.path.join(tmp, nom), "w", encoding="utf-8") as fichier:
+                fichier.write(contenu)
+        return subprocess.run([sys.executable, os.path.join(ICI, "empreinte.py"), tmp],
+                              capture_output=True, text=True).stdout.strip()
+
+
+empreintes = []
+for jour_, heure, minute in ((7, 8, 17), (7, 9, 48), (8, 23, 0)):
+    r["calcule"] = datetime(2026, 10, jour_, heure, minute, tzinfo=timezone.utc)
+    empreintes.append(empreinte_de(r))
 verifie("l'empreinte ne dépend que des chiffres, pas de l'heure du calcul",
-        empreintes[0] and empreintes[0] == empreintes[1], "empreintes : %s" % empreintes)
+        bool(empreintes[0]) and len(set(empreintes)) == 1, "empreintes : %s" % empreintes)
+r_bouge = dict(r)
+r_bouge["total"] = r["total"] + 1
+verifie("un chiffre qui bouge change l'empreinte", empreinte_de(r_bouge) != empreintes[0])
 
 # Rendu de référence. Toute modification de géométrie, d'ordre ou de style
 # change cette empreinte. Si c'est voulu : regarder le rendu (deux thèmes,
-# pendant et après l'animation), puis recopier la nouvelle valeur ici.
-import hashlib
-REFERENCE = "10b520e94e7c90a6"
-obtenue = hashlib.sha256(svg.encode("utf-8")).hexdigest()[:16]
+# bureau et mobile, pendant et après l'animation), puis recopier la nouvelle
+# valeur ici.
+REFERENCE = "9328840d32ab5fb1"
+obtenue = hashlib.sha256((svg + svg_bord).encode("utf-8")).hexdigest()[:16]
 verifie("le rendu de référence n'a pas bougé", obtenue == REFERENCE, "obtenue : %s" % obtenue)
 
 print()

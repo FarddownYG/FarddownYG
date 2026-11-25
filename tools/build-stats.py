@@ -794,6 +794,7 @@ def _cadran(f, cx, cy, R, valeur, legende, detail, plein=False, depart=0.3, deho
     o.append('<path d="%s" stroke="%s" stroke-width="0.9" opacity="0.75"/>'
              % (" ".join(mineures), p["doux"]))
     # chiffres
+    plein = plein and maxi < 10000              # au-delà, « 120 000 » ne tient plus sur l'échelle
     facteur = 1 if plein else 10 ** int(math.floor(math.log10(pas)))
     corps_chiffre = R * (0.098 if plein else 0.118)
     for i in range(n + 1):
@@ -808,7 +809,10 @@ def _cadran(f, cx, cy, R, valeur, legende, detail, plein=False, depart=0.3, deho
         o.append(f.texte("mono", "× %s" % fr(facteur), max(8, R * 0.066), cx, cy - R * 0.34,
                          ancre="middle", approche=0.8, fill=p["discret"]))
     # affichage : le record lui-même
+    # Il se loge entre le premier et le dernier chiffre de l'échelle : au-delà
+    # de quatre chiffres, le corps diminue pour ne pas les toucher.
     corps_valeur = R * 0.3
+    corps_valeur *= min(1.0, 0.74 * R / f.largeur("titre", fr(valeur), corps_valeur))
     o.append(f.texte("titre", fr(valeur), corps_valeur, cx, cy + R * 0.52, ancre="middle", fill=p["o"],
                      cascade=(depart + 1.5, 0.06)))
     if dehors:
@@ -846,6 +850,7 @@ def _anneau(f, cx, cy, r, fraction, valeur, legende, detail, depart=0.6):
     tour = 2 * math.pi * r
     trace = max(0.0, min(1.0, fraction)) * tour
     corps = r * 0.6
+    corps *= min(1.0, 1.5 * r / f.largeur("titre", valeur, corps))
     return [
         '<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="5"/>'
         % (_n(cx), _n(cy), _n(r), p["trait"]),
@@ -861,13 +866,21 @@ def _anneau(f, cx, cy, r, fraction, valeur, legende, detail, depart=0.6):
 
 
 def _compteur(f, cx, y, nombre, cases, lc, hc, depart=0.5, cle="k"):
-    """Compteur à rouleaux centré en cx, haut en y : `cases` rouleaux de
-    lc × hc. Chaque rouleau porte son chiffre final à sa place ; l'animation
-    le fait partir de zéro, les rouleaux de droite tournant davantage."""
+    """Compteur à rouleaux centré en cx, haut en y : au moins `cases` rouleaux
+    de lc × hc. Chaque rouleau porte son chiffre final à sa place ; l'animation
+    le fait partir de zéro, les rouleaux de droite tournant davantage.
+
+    Un nombre plus long que prévu reçoit les rouleaux qu'il lui faut — un
+    compteur qui perd son chiffre de tête affiche un nombre faux — et ils
+    rétrécissent pour garder la largeur prévue."""
     p = f.p
-    texte = ("%d" % nombre).rjust(cases, "0")[-cases:]
-    premier = len(texte) - len("%d" % nombre)        # zéros de tête : éteints
     ecart = 3.0
+    prevue = cases * lc + (cases - 1) * ecart
+    cases = max(cases, len("%d" % nombre))
+    texte = ("%d" % nombre).rjust(cases, "0")
+    premier = len(texte) - len("%d" % nombre)        # zéros de tête : éteints
+    serre = min(1.0, (prevue * 1.18 - (cases - 1) * ecart) / (cases * lc))
+    lc, hc = lc * serre, hc * serre
     large = cases * lc + (cases - 1) * ecart
     x0 = cx - large / 2.0
     corps = hc * 0.74
@@ -950,6 +963,7 @@ def carte_bord(r, p, mobile=False):
     f.style(SANS_ANIM % ".n,.ag,.an,.od")
 
     part = r["actifs"] / float(max(1, r["ecoules"]))
+    moyenne = decimal(r["moyenne"]) if r["moyenne"] < 100 else fr(round(r["moyenne"]))
     if mobile:
         R = 98
         f += _cadran(f, 118, 166, R, semaine, "Meilleure semaine", periode(s1, s2, ref),
@@ -965,7 +979,7 @@ def carte_bord(r, p, mobile=False):
         f += _anneau(f, 118, 590, 36, part, "%d %%" % round(100 * part), "Jours actifs",
                      "%s sur %s" % (fr(r["actifs"]), fr(r["ecoules"])), depart=1.0)
         f += _anneau(f, 332, 590, 36, min(1.0, r["moyenne"] / max(1.0, float(r["record"])) * 4),
-                     decimal(r["moyenne"]), "Par jour actif", "en moyenne", depart=1.15)
+                     moyenne, "Par jour actif", "en moyenne", depart=1.15)
     else:
         R = 130
         f += _cadran(f, 186, 244, R, semaine, "Meilleure semaine", periode(s1, s2, ref),
@@ -975,7 +989,7 @@ def carte_bord(r, p, mobile=False):
         f += _anneau(f, 393, 144, 34, part, "%d %%" % round(100 * part), "Jours actifs",
                      "%s sur %s" % (fr(r["actifs"]), fr(r["ecoules"])), depart=1.0)
         f += _anneau(f, 507, 144, 34, min(1.0, r["moyenne"] / max(1.0, float(r["record"])) * 4),
-                     decimal(r["moyenne"]), "Par jour actif", "en moyenne", depart=1.15)
+                     moyenne, "Par jour actif", "en moyenne", depart=1.15)
         f += f.texte("mono-gras", "COMPTEUR", 8.8, 450, 250, ancre="middle", approche=3, fill=p["o"])
         f += _compteur(f, 450, 260, r["total"], 6, 30, 40, depart=0.7, cle="k")
         f += f.texte("mono", "contributions depuis le %s" % jour_fr(r["premier"]), 8.8, 450, 322,
@@ -993,7 +1007,12 @@ def rendus(r):
     for nom, rendu in CARTES:
         for mobile in (False, True):
             for p in PALETTES:
-                yield "%s%s-%s.svg" % (nom, "-m" if mobile else "", p["nom"]), rendu(r, p, mobile)
+                svg = rendu(r, p, mobile)
+                yield "%s%s-%s.svg" % (nom, "-m" if mobile else "", p["nom"]), svg
+                # Transition : le README encore en ligne pointe sur records-*.svg.
+                # À retirer dès que le nouveau README est publié.
+                if nom == "bord" and not mobile:
+                    yield "records-%s.svg" % p["nom"], svg
 
 
 def main():
