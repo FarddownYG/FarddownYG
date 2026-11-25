@@ -410,7 +410,6 @@ def planche_heros(p, mobile=False):
             "@keyframes ec{from{stroke-dashoffset:1;opacity:0}6%{opacity:1}94%{opacity:1}"
             "to{stroke-dashoffset:0;opacity:0}}")
     f.style(SANS_ANIM % ".em,.sc,.n,.ec")
-    f.style("@media (prefers-reduced-motion:reduce){.ec{opacity:0}}")
 
     def apparait(t):
         return 'class="em" style="animation-delay:%ss"' % _n(t)
@@ -427,9 +426,10 @@ def planche_heros(p, mobile=False):
     k = eh / 1200.0
     f += '<circle cx="%s" cy="%s" r="%s" fill="url(#lu)"/>' % (_n(ex + 500 * k), _n(ey + 610 * k), _n(eh * 0.52))
     f += embleme(f, ex, ey, eh, _entree_embleme)
-    # une étincelle fait le tour du cordon
+    # Une étincelle fait le tour du cordon. Au repos elle est éteinte (opacity
+    # en attribut) : sans animation, on ne voit que le filigrane.
     f += ('<path d="%s" transform="translate(%s %s) scale(%s)" fill="none" stroke="%s" stroke-width="7" '
-          'stroke-linecap="round" pathLength="1" class="ec"/>'
+          'stroke-linecap="round" pathLength="1" opacity="0" class="ec"/>'
           % (PIQUE, _n(ex), _n(ey), ("%.5f" % k).rstrip("0"), p["o_haut"]))
 
     if mobile:
