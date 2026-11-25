@@ -358,9 +358,8 @@ r["calcule"] = datetime(2026, 10, 7, 8, 0, tzinfo=timezone.utc)
 svg = bs.carte_skyline(r, SOMBRE)
 svg_mobile = bs.carte_skyline(r, SOMBRE, True)
 svg_bord = bs.carte_bord(r, SOMBRE)
-# toutes les cartes publiées, pour le rendu de référence (l'alias de transition
-# records-* est le tableau de bord : inutile de le compter deux fois)
-svg_toutes = "".join(contenu for nom, contenu in sorted(bs.rendus(r)) if not nom.startswith("records-"))
+# toutes les cartes publiées, pour le rendu de référence
+svg_toutes = "".join(contenu for nom, contenu in sorted(bs.rendus(r)))
 cases = bs._grille(r["jours"])
 bs.date = _date
 
