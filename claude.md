@@ -7,25 +7,46 @@ GitHub de Yanis. Thème as de pique, public mixte développeurs et recruteurs.
 
 | | |
 |---|---|
-| `README.md` | la page du profil |
-| `assets/header-*.svg`, `assets/divider-*.svg` | bannière animée et séparateur, deux thèmes |
-| `tools/build-header.py` | génère la bannière (les deux thèmes depuis une seule source) |
-| `tools/build-stats.py` | calcule les statistiques et rend les deux cartes (skyline, records) |
+| `README.md` | la page du profil : cinq images, chacune en quatre versions |
+| `assets/heros-*.svg` | le héros : l'as de pique en filigrane et l'identité |
+| `assets/r32-*.svg` | le garage : planche technique de la Skyline GT-R R32 |
+| `assets/signature-*.svg` | le mot de la fin |
+| `assets/avatar.svg`, `assets/avatar.png` | la photo de profil (à téléverser à la main, voir plus bas) |
+| `tools/dessin.py` | le système de design : palettes, feuille SVG, cadre, motifs, pose de l'emblème |
+| `tools/typo.py` | compose le texte en tracés à partir de l'atlas de glyphes |
+| `tools/glyphes.json` | l'atlas : contours, chasses, crénages (produit par `build-glyphes.py`) |
+| `tools/embleme.json` | l'as de pique en filigrane (produit par `build-embleme.py`) |
+| `tools/build-assets.py` | rend les images fixes : héros, garage, signature, avatar |
+| `tools/build-stats.py` | calcule les statistiques et rend les deux cartes (skyline, tableau de bord) |
 | `tools/empreinte.py` | empreinte des cartes hors horodatage, pour ne publier que sur changement |
 | `tools/boucle-stats.sh` | recalcule en boucle et publie |
 | `tools/test-stats.py` | vérifications, exécutées avant toute publication |
+| `tools/build-glyphes.py`, `tools/build-embleme.py` | outils de développement (dépendances : fonttools, uharfbuzz, numpy) — la CI ne les exécute pas |
+| `tools/POLICES.md` | origine et licence des polices dont l'atlas dérive |
 | `.github/workflows/records.yml` | fait tourner la boucle |
-| branche `stats` | les quatre cartes publiées — skyline et records, deux thèmes chacune (orpheline, réécrite à chaque publication) |
+| branche `stats` | les huit cartes publiées — skyline et tableau de bord, bureau et mobile, deux thèmes (orpheline, réécrite à chaque publication) |
+
+Suffixes des fichiers : `-m` pour la mise en page mobile, `-dark` / `-light`
+pour le thème. `heros-m-light.svg` est le héros, mobile, clair.
 
 ## Règles qui ne se négocient pas
 
 **Aucun JavaScript.** GitHub nettoie le markdown des README : `<script>` est
 retiré, les images sont rendues en `<img>`, donc sans interactivité ni
-scripting. Toute animation passe par du SVG pur — SMIL (`<animate>`,
-`<animateTransform>`) et CSS en ligne. Rien d'autre ne tient.
+scripting. Toute animation passe par du CSS dans le SVG. Rien d'autre ne tient.
 
 **Aucune ressource externe.** Les SVG ne chargent ni police ni image distante :
-un `<img>` ne suit pas ces requêtes. Tout est vectorisé ou dessiné.
+un `<img>` ne suit pas ces requêtes. Le texte lui-même est dessiné en tracés
+(voir « Le système de design ») ; un test refuse tout `<text>`.
+
+**Chaque élément porte son état final en attribut.** Une animation part
+d'ailleurs et y revient ; elle ne pose jamais l'état final elle-même. Un moteur
+qui n'anime pas, ou un visiteur qui a demandé moins de mouvement, voit donc la
+bonne aiguille, la bonne barre, le bon chiffre. La règle
+`prefers-reduced-motion` vient toujours après les règles d'animation, sinon
+elles l'écrasent. Et on n'anime pas en `transform` un élément qui porte déjà
+un attribut `transform`, sauf si l'animation finit sur cette même valeur : le
+placement va sur un groupe extérieur, l'animation sur un groupe intérieur.
 
 **Aucun service tiers pour les statistiques.** Les instances publiques
 gratuites tombent ou servent du cache, et rien ne permet alors de savoir si un
@@ -149,8 +170,10 @@ durée de vie du job, et publie sur la branche `stats` dès qu'un chiffre a boug
   boucle en cours — c'est aussi le mécanisme de redémarrage si un run meurt.
 - **La publication n'a lieu que sur changement réel.** Chaque carte porte
   l'heure de son calcul, donc deux rendus successifs diffèrent toujours ;
-  `tools/empreinte.py` compare les cartes privées de cette ligne. Sans cela la
-  branche serait réécrite toutes les deux minutes pour rien.
+  `tools/empreinte.py` compare les cartes privées du groupe `<g id="maj">`
+  (l'horodatage) et du bloc `<defs id="glyphes">` (les contours des caractères
+  employés, donc aussi ceux des chiffres de l'heure). Sans cela la branche
+  serait réécrite toutes les deux minutes pour rien.
 - **Un battement horaire republie même sans changement**, pour que
   l'horodatage affiché sur les cartes prouve que la chaîne est vivante. Une
   carte figée depuis deux jours se voit ainsi immédiatement.
@@ -278,33 +301,156 @@ survol de la légende.
 - **Animation en CSS, pas en SMIL.** Les valeurs propres à chaque barre passent
   par des variables (`--h`, `--d`, `--t`). Chaque face latérale est un
   rectangle unité cisaillé (`skewY(±29,2°)`) dont seule la hauteur s'anime, et
-  chaque élément garde sa géométrie finale en attribut : sans CSS ou en
-  mouvement réduit, la carte s'affiche complète. En SMIL il aurait fallu une
-  jumelle immobile par barre — 271 Ko contre 78.
+  chaque élément garde sa géométrie finale en attribut. En SMIL il aurait fallu
+  une jumelle immobile par barre, soit plus du triple du poids.
 - **Les journées vides sont une seule dalle** réutilisée par `<use>`.
+- **Sur mobile, la scène et les chiffres se séparent** : la ville en haut, les
+  quatre chiffres dessous, sur deux colonnes. Sur bureau ils occupent les deux
+  coins que la diagonale laisse vides, et le cadrage leur réserve cette place
+  (un test y promène un record à cinq chiffres).
 
-Le record du jour, la plus longue série et la série actuelle vivent désormais
-dans le skyline ; la carte des records affiche la meilleure semaine (sept jours
-glissants) à la place du record, pour ne montrer aucun chiffre deux fois.
+Le record du jour, la plus longue série et la série actuelle vivent dans le
+skyline ; le tableau de bord montre le reste, pour n'afficher aucun chiffre
+deux fois — à l'exception du total, qui a son compteur.
 
-**Une limite de vérification :** Chromium émulé ne transmet pas
-`prefers-reduced-motion` aux documents chargés en `<img>`. Le CSS a été vérifié
-en ouvrant le SVG comme document principal ; savoir si un navigateur donné
-transmet la préférence à une image dépend de lui, pas de la carte.
+## Le tableau de bord
+
+Les records présentés comme les compteurs d'une voiture (`carte_bord()`) : deux
+grands cadrans à aiguille — meilleure semaine sur sept jours glissants,
+meilleur mois —, un compteur à rouleaux pour le total, un totalisateur pour les
+trente derniers jours, deux petits cadrans annulaires (part de jours actifs,
+moyenne par jour actif). À l'ouverture les aiguilles balaient toute l'échelle
+avant de se poser, comme le contrôle d'allumage d'un vrai tableau de bord.
+
+- **L'échelle d'un cadran est calculée**, pas fixée : `_echelle()` choisit un
+  pas rond (1, 2 ou 5 fois une puissance de dix) et de cinq à dix intervalles,
+  pour que l'aiguille se pose vers les trois quarts de la course. Un test
+  balaie les valeurs : avec six intervalles pour plancher, une semaine à 182
+  ne trouvait aucune graduation et l'aiguille pointait n'importe où.
+- **Deux façons de chiffrer l'échelle.** Le cadran de la meilleure semaine
+  porte toujours le chiffre de tête et un multiplicateur (« × 10 », « × 100 »…),
+  comme un compte-tours. Celui du meilleur mois porte les nombres entiers
+  (0, 200, 400…) comme un compteur de vitesse, et passe au même système dès
+  que son maximum atteint 10 000.
+- **Les chiffres reculent de leur propre largeur.** Posés à distance fixe de
+  leur graduation, « 200 » à 9 h et « 1000 » à 3 h la touchaient, et « —200 »
+  se lisait « −200 ».
+- **Le compteur ne tronque jamais** : un total plus long que prévu reçoit les
+  rouleaux qu'il lui faut, qui rétrécissent pour tenir. Un compteur qui perd
+  son chiffre de tête affiche un nombre faux ; un test le verrouille.
+- **Les valeurs s'ajustent à leur place** : dans un cadran ou un anneau, le
+  corps du chiffre diminue quand le nombre s'allonge, et la valeur d'un cadran
+  s'arrête avant les chiffres de l'échelle qui sont à sa hauteur. La période
+  inscrite sous la meilleure semaine rétrécit de même quand elle porte une
+  année.
+
+## Le système de design
+
+Nom de code « carte noire » : noir chaud, crème, or, et un rouge vermillon —
+celui des cœurs et des carreaux — réservé aux aiguilles, aux feux de la GT-R et
+à la flamme de la série en cours. Les deux palettes (`SOMBRE`, `CLAIR`) vivent
+dans `tools/dessin.py`, avec la feuille SVG (`Feuille`), le cadre commun
+(`cadre()`) et les motifs.
+
+**Le texte est dessiné, pas écrit.** Un `<img>` ne charge aucune police : un
+`<text>` retomberait sur celle de l'appareil, avec des largeurs imprévisibles.
+`tools/typo.py` compose donc chaque ligne en tracés, à partir de
+`tools/glyphes.json` — contours, chasses, paires de crénage et ligatures de
+Playfair Display (titres, texte, italique) et de JetBrains Mono. Chaque glyphe
+employé est défini une fois dans `<defs id="glyphes">` puis rappelé par
+`<use>`. Deux conséquences : le rendu est identique partout, et la largeur
+d'un texte est connue au dixième de pixel avant de le poser, ce qui permet de
+caler une mise en page sans marge de sécurité. Un caractère absent de l'atlas
+lève une erreur plutôt que de laisser un blanc.
+
+Pour ajouter un caractère ou une graisse : compléter `build-glyphes.py`, le
+relancer sur les fichiers `.woff2` des deux familles (paquets
+`@fontsource/playfair-display` et `@fontsource/jetbrains-mono`), et valider le
+nouvel atlas. C'est un outil de développement (fonttools, brotli, uharfbuzz) ;
+la CI ne lit que le JSON. Licences : `tools/POLICES.md`.
+
+**Quatre versions de chaque image.** Bureau (dessin large de 900) ou mobile
+(dessin large de 450, plus haut, recomposé et non rétréci), en sombre et en
+clair. Le README les choisit par `<picture>` :
+
+```html
+<source media="(min-width: 1012px) and (prefers-color-scheme: dark)" srcset="…-dark.svg">
+<source media="(min-width: 1012px) and (prefers-color-scheme: light)" srcset="…-light.svg">
+<source media="(prefers-color-scheme: dark)" srcset="…-m-dark.svg">
+<source media="(prefers-color-scheme: light)" srcset="…-m-light.svg">
+```
+
+1012 px est le seuil où GitHub passe la page de profil en pleine largeur ; en
+dessous, la colonne du README fait entre 300 et 580 px et c'est la version
+mobile qui est lisible. **Ce sont les sources « bureau » qui portent la
+condition de largeur, et l'ordre compte.** Si la condition de largeur venait à
+être ignorée — par exemple par un script qui réécrirait les requêtes de thème
+quand le visiteur force un thème sur GitHub —, la première source du bon thème
+l'emporterait : la version bureau, c'est-à-dire ce qu'affiche n'importe quel
+profil. Dans l'ordre inverse, c'est une mise en page mobile qui s'étirerait
+sur un grand écran. Ce comportement de GitHub n'a pas pu être observé d'ici ;
+l'ordre a été choisi pour que l'échec éventuel soit bénin.
+
+## L'as de pique
+
+`tools/build-embleme.py` dessine l'emblème comme un orfèvre monte un
+filigrane :
+
+1. **le pourtour** — cordon, rang de perles, liseré — suit la silhouette à
+   distance constante : ce sont des courbes de niveau d'un champ de distance ;
+2. **l'ossature** — axe, médaillon, grandes volutes en C, crosses de la pointe
+   et du pied — est posée à la main ;
+3. **la dentelle** est un empilement glouton : à chaque tour, le plus grand
+   cercle qui tient encore dans le vide restant reçoit une spirale qui part de
+   son point de contact, comme une vrille naît d'une tige. Les interstices
+   reçoivent des œillets, puis des grains.
+
+Seule la moitié gauche est calculée et stockée ; la droite est son miroir,
+obtenu par `<use>`. Le résultat (`tools/embleme.json`, une soixantaine de
+kilo-octets) est découpé en couches — pourtour, ossature, puis huit rangs de
+dentelle du cœur vers les bords — que `dessin.embleme()` pose dans une feuille.
+Le héros s'en sert pour monter le filigrane dans cet ordre, puis faire
+scintiller les grains d'or.
+
+Régénérer : `python3 tools/build-embleme.py > tools/embleme.json` (numpy), puis
+`python3 tools/build-assets.py assets`.
+
+## Le garage
+
+La Skyline GT-R R32 est dessinée à partir de ses cotes réelles (longueur
+4 545 mm, largeur 1 755, hauteur 1 340, empattement 2 615) : le profil est une
+liste de points en millimètres, reliés par une spline (`dessin.lisse()`). Aucun
+logo de marque — le nom en toutes lettres suffit.
+
+## Les images fixes et l'avatar
+
+`python3 tools/build-assets.py assets` réécrit le héros, le garage, la
+signature et `avatar.svg`. L'avatar PNG se rend ensuite dans un navigateur sans
+tête, à 1024 px, puis s'enregistre avec Pillow en `optimize=True` : GitHub
+refuse au-delà d'un mégaoctet.
+
+**Un dépôt ne peut pas changer la photo de profil.** Elle se téléverse à la
+main sur github.com/settings/profile : PNG ou JPG, opaque, recadrée en disque.
+L'emblème est cadré pour ce recadrage.
 
 ## À savoir sur le rendu SVG
 
-- `textLength` avec `lengthAdjust="spacingAndGlyphs"` fixe la largeur d'un
-  texte sans police embarquée. WebKit répartit mal `textLength` entre des
-  `<tspan>` : découper en `<text>` frères.
-- `calcMode="discrete"` : les `keyTimes` doivent commencer à 0 ; en linéaire ou
-  spline la dernière valeur doit atteindre 1. Firefox ignore silencieusement
-  des `keyTimes` invalides.
-- SVG supprime les espaces en fin de `<text>` : deux segments de couleurs
-  différentes ont besoin d'un `x` explicite, sinon ils se collent.
-- `prefers-reduced-motion` ne peut être traité qu'en CSS ; SMIL ne répond pas
-  aux media queries. On neutralise la géométrie avec `!important` et
-  `display:none`.
-- Les avatars GitHub n'acceptent pas le SVG : PNG ou JPG, opaque, 1 Mo maximum,
-  recadré en cercle, et cela se règle sur github.com/settings/profile — un
-  dépôt ne peut pas le faire.
+- **Une image hors de l'écran n'avance pas.** Chromium suspend les animations
+  d'un SVG chargé en `<img>` tant qu'il n'est pas visible : l'entrée d'une
+  carte se joue quand le visiteur arrive dessus en faisant défiler, pas au
+  chargement de la page. Corollaire pour les captures : une capture « pleine
+  page » montre les images du bas à leur première image.
+- **`prefers-reduced-motion` atteint bien les images.** L'émulation de
+  Playwright (`reducedMotion`) ne se transmet pas aux documents chargés en
+  `<img>`, mais le réglage du système, si : lancer Chromium avec
+  `--force-prefers-reduced-motion` affiche chaque image dans son état final.
+  C'est ainsi que la page entière a été vérifiée.
+- **Un `<use>` hérite de `color`.** Les couches de l'emblème sont peintes en
+  `currentColor` ; la couleur se choisit sur le `<use>` qui les rappelle.
+- Les identifiants des glyphes dérivent de la police et du caractère, pas de
+  l'ordre d'écriture : deux rendus du même texte donnent le même fichier.
+- Playfair Display n'a pas de chiffres tabulaires. Les rouleaux du compteur
+  centrent donc chaque chiffre dans sa case (`_compteur()`) ; `typo` sait faire
+  de même pour un texte courant (`tab=True`), sans appelant aujourd'hui.
+- En français le premier du mois s'écrit « 1er » : `dessin.quantieme()`, dont
+  se servent l'horodatage et toutes les dates des cartes.

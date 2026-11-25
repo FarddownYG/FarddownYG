@@ -1035,12 +1035,7 @@ def rendus(r):
     for nom, rendu in CARTES:
         for mobile in (False, True):
             for p in PALETTES:
-                svg = rendu(r, p, mobile)
-                yield "%s%s-%s.svg" % (nom, "-m" if mobile else "", p["nom"]), svg
-                # Transition : le README encore en ligne pointe sur records-*.svg.
-                # À retirer dès que le nouveau README est publié.
-                if nom == "bord" and not mobile:
-                    yield "records-%s.svg" % p["nom"], svg
+                yield "%s%s-%s.svg" % (nom, "-m" if mobile else "", p["nom"]), rendu(r, p, mobile)
 
 
 def main():
