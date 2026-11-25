@@ -259,8 +259,13 @@ def embleme(f, x, y, h, attributs=None):
     return "".join(o)
 
 
+def quantieme(jour):
+    """Le jour du mois tel qu'on l'écrit : « 1er », puis 2, 3…"""
+    return "1er" if jour == 1 else "%d" % jour
+
+
 def horodatage(dt, court=False):
     if court:
-        return "%d %s %d · %02dh%02d UTC" % (dt.day, ABBR[dt.month - 1], dt.year, dt.hour, dt.minute)
-    return "mis à jour le %d %s %d à %02dh%02d UTC" % (
-        dt.day, ABBR[dt.month - 1], dt.year, dt.hour, dt.minute)
+        return "%s %s %d · %02dh%02d UTC" % (quantieme(dt.day), ABBR[dt.month - 1], dt.year, dt.hour, dt.minute)
+    return "mis à jour le %s %s %d à %02dh%02d UTC" % (
+        quantieme(dt.day), ABBR[dt.month - 1], dt.year, dt.hour, dt.minute)

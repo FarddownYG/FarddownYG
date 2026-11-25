@@ -39,7 +39,7 @@ from datetime import date, datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dessin import (ABBR, FLAMME, MOIS, PALETTES, Feuille, arc, cadre, fr,  # noqa: E402
-                    horodatage, pique, polaire, rosace, teinte)
+                    horodatage, pique, polaire, quantieme, rosace, teinte)
 from typo import _n  # noqa: E402
 
 LOGIN = os.environ.get("LOGIN") or "FarddownYG"
@@ -363,12 +363,12 @@ def stats(jours):
 
 def jour_fr(iso):
     d = _jour(iso)
-    return "%d %s %d" % (d.day, ABBR[d.month - 1], d.year)
+    return "%s %s %d" % (quantieme(d.day), ABBR[d.month - 1], d.year)
 
 
 def court(iso):
     d = _jour(iso)
-    return "%d %s" % (d.day, ABBR[d.month - 1])
+    return "%s %s" % (quantieme(d.day), ABBR[d.month - 1])
 
 
 def periode(d1, d2, ref):
@@ -378,6 +378,8 @@ def periode(d1, d2, ref):
     les mêmes noms de mois."""
     a, b = _jour(d1), _jour(d2)
     fin = jour_fr(d2) if b.year != _jour(ref).year else court(d2)
+    if d1 == d2:
+        return fin              # une série d'un jour n'est pas « du 25 au 25 »
     debut = jour_fr(d1) if a.year != b.year else court(d1)
     return "%s – %s" % (debut, fin)
 
@@ -742,13 +744,16 @@ def _echelle(v):
     d'intervalles). Le maximum est choisi pour que l'aiguille se pose vers les
     trois quarts de la course : un record doit avoir l'air d'en être un."""
     cible = max(v, 1) / 0.82
-    for exposant in range(0, 9):
+    for exposant in range(0, 12):
         for mantisse in (1, 2, 5):
             pas = mantisse * 10 ** exposant
             n = int(math.ceil(cible / float(pas)))
-            if 6 <= n <= 10:
+            # De 5 à 10 intervalles : avec 6 pour plancher, une cible entre
+            # 20 et 25 (× 10^k) ne convenait à aucun pas — 11 intervalles de 2,
+            # 5 de 5 — et le cadran retombait sur 0-8 pour une valeur de 182.
+            if 5 <= n <= 10:
                 return pas, n
-    return 1, 8
+    return 1, 8                 # valeurs de 0 à 3 : l'échelle minimale
 
 
 CADRAN_DEBUT, CADRAN_COURSE = 135.0, 270.0   # degrés, sens horaire à l'écran
@@ -797,14 +802,24 @@ def _cadran(f, cx, cy, R, valeur, legende, detail, plein=False, depart=0.3, deho
     plein = plein and maxi < 10000              # au-delà, « 120 000 » ne tient plus sur l'échelle
     facteur = 1 if plein else 10 ** int(math.floor(math.log10(pas)))
     corps_chiffre = R * (0.098 if plein else 0.118)
+    h_chiffre = f.t.capitale("titre", corps_chiffre)
+    poses = []                                  # (x, y, largeur) des chiffres, pour caler la valeur
     for i in range(n + 1):
         if plein and n > 6 and i % 2:
             continue
         v = i * pas
-        x, y = polaire(cx, cy, R - 16 - 0.085 * R - corps_chiffre * (1.0 if plein else 0.82), angle(v))
+        etiquette = "%d" % (v // facteur)
+        w_chiffre = f.largeur("titre", etiquette, corps_chiffre)
+        # Le chiffre recule de sa propre demi-étendue le long du rayon : à 9 h
+        # et à 3 h, « 200 » ou « 1000 » posés à distance fixe touchaient leur
+        # graduation, et « —200 » se lisait « −200 ».
+        a = math.radians(angle(v))
+        recul = max(corps_chiffre * (1.0 if plein else 0.82),
+                    abs(math.cos(a)) * w_chiffre / 2 + abs(math.sin(a)) * h_chiffre / 2 + 0.03 * R)
+        x, y = polaire(cx, cy, R - 16 - 0.085 * R - recul, angle(v))
         f_ch = p["rouge"] if v >= 0.8 * maxi else p["encre"]
-        o.append(f.texte("titre", "%d" % (v // facteur), corps_chiffre, x,
-                         y + f.t.capitale("titre", corps_chiffre) / 2, ancre="middle", fill=f_ch))
+        o.append(f.texte("titre", etiquette, corps_chiffre, x, y + h_chiffre / 2, ancre="middle", fill=f_ch))
+        poses.append((x, y, w_chiffre))
     if facteur != 1:
         o.append(f.texte("mono", "× %s" % fr(facteur), max(8, R * 0.066), cx, cy - R * 0.34,
                          ancre="middle", approche=0.8, fill=p["discret"]))
@@ -812,8 +827,14 @@ def _cadran(f, cx, cy, R, valeur, legende, detail, plein=False, depart=0.3, deho
     # Il se loge entre le premier et le dernier chiffre de l'échelle : au-delà
     # de quatre chiffres, le corps diminue pour ne pas les toucher.
     corps_valeur = R * 0.3
-    corps_valeur *= min(1.0, 0.74 * R / f.largeur("titre", fr(valeur), corps_valeur))
-    o.append(f.texte("titre", fr(valeur), corps_valeur, cx, cy + R * 0.52, ancre="middle", fill=p["o"],
+    base_valeur = cy + R * 0.52
+    libre = 0.74 * R
+    for x, y, w_chiffre in poses:
+        # un chiffre de l'échelle à la hauteur de la valeur borne sa largeur
+        if y + h_chiffre / 2 > base_valeur - f.t.capitale("titre", corps_valeur) and y - h_chiffre / 2 < base_valeur:
+            libre = min(libre, 2 * (abs(x - cx) - w_chiffre / 2 - 0.035 * R))
+    corps_valeur *= min(1.0, libre / f.largeur("titre", fr(valeur), corps_valeur))
+    o.append(f.texte("titre", fr(valeur), corps_valeur, cx, base_valeur, ancre="middle", fill=p["o"],
                      cascade=(depart + 1.5, 0.06)))
     if dehors:
         o.append(f.texte("texte", legende.upper(), 11, cx, cy + R + 24, ancre="middle", approche=1.4,
@@ -822,7 +843,11 @@ def _cadran(f, cx, cy, R, valeur, legende, detail, plein=False, depart=0.3, deho
     else:
         o.append(f.texte("texte", legende.upper(), R * 0.08, cx, cy + R * 0.71, ancre="middle",
                          approche=R * 0.011, fill=p["doux"]))
-        o.append(f.texte("mono", detail, R * 0.068, cx, cy + R * 0.825, ancre="middle", fill=p["discret"]))
+        # la période s'allonge d'une année dès qu'elle n'est plus de l'année en
+        # cours : elle rétrécit plutôt que de mordre sur le filet du cadran
+        corps_detail = R * 0.068
+        corps_detail *= min(1.0, 0.86 * R / f.largeur("mono", detail, corps_detail))
+        o.append(f.texte("mono", detail, corps_detail, cx, cy + R * 0.825, ancre="middle", fill=p["discret"]))
     # aiguille : dessinée vers +x, posée par rotation ; l'attribut porte
     # l'angle final, l'animation balaie l'échelle puis y revient
     L = R - 24
@@ -928,13 +953,17 @@ def carte_bord(r, p, mobile=False):
     semaine, s1, s2 = r["semaine"]
     ref = max(r["jours"])
     W, H = (450, 690) if mobile else (900, 440)
+    # une décimale tant qu'elle se lit ; au-delà de cent, l'entier suffit
+    moyenne = decimal(r["moyenne"]) if round(r["moyenne"], 1) < 100 else fr(round(r["moyenne"]))
     f = Feuille(W, H, p, "Tableau de bord des contributions",
-                "Meilleure semaine : %s contributions (%s). Meilleur mois : %s (%s). "
-                "%s jours actifs sur %s. %s contributions par jour actif. "
-                "%s contributions sur les 30 derniers jours. Total : %s."
-                % (fr(semaine), periode(s1, s2, ref), fr(r["mois_total"]), mois_fr(r["mois"]),
-                   fr(r["actifs"]), fr(r["ecoules"]), decimal(r["moyenne"]), fr(r["trente"]),
-                   fr(r["total"])))
+                "Meilleure semaine : %s %s (%s). Meilleur mois : %s (%s). "
+                "%s %s sur %s. %s %s par jour actif. "
+                "%s %s sur les 30 derniers jours. Total : %s."
+                % (fr(semaine), pluriel(semaine, "contribution"), periode(s1, s2, ref),
+                   fr(r["mois_total"]), mois_fr(r["mois"]),
+                   fr(r["actifs"]), "jours actifs" if r["actifs"] > 1 else "jour actif", fr(r["ecoules"]),
+                   moyenne, "contributions" if r["moyenne"] >= 2 else "contribution",
+                   fr(r["trente"]), pluriel(r["trente"], "contribution"), fr(r["total"])))
     cadre(f, "Tableau de bord", horodatage(r["calcule"], court=mobile))
     f.definis('<linearGradient id="lu" x1="0" y1="0" x2="1" y2="1">'
               '<stop offset="0" stop-color="%s"/><stop offset="0.45" stop-color="%s"/>'
@@ -963,7 +992,6 @@ def carte_bord(r, p, mobile=False):
     f.style(SANS_ANIM % ".n,.ag,.an,.od")
 
     part = r["actifs"] / float(max(1, r["ecoules"]))
-    moyenne = decimal(r["moyenne"]) if r["moyenne"] < 100 else fr(round(r["moyenne"]))
     if mobile:
         R = 98
         f += _cadran(f, 118, 166, R, semaine, "Meilleure semaine", periode(s1, s2, ref),

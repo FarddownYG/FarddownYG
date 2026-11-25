@@ -358,6 +358,9 @@ r["calcule"] = datetime(2026, 10, 7, 8, 0, tzinfo=timezone.utc)
 svg = bs.carte_skyline(r, SOMBRE)
 svg_mobile = bs.carte_skyline(r, SOMBRE, True)
 svg_bord = bs.carte_bord(r, SOMBRE)
+# toutes les cartes publiées, pour le rendu de référence (l'alias de transition
+# records-* est le tableau de bord : inutile de le compter deux fois)
+svg_toutes = "".join(contenu for nom, contenu in sorted(bs.rendus(r)) if not nom.startswith("records-"))
 cases = bs._grille(r["jours"])
 bs.date = _date
 
@@ -496,11 +499,85 @@ verifie("la description porte tous les chiffres du tableau",
         all(bs.fr(v) in desc_b for v in (r["total"], r["semaine"][0], r["mois_total"], r["trente"], r["actifs"])),
         desc_b)
 # Une aiguille ne sort jamais de son cadran, quelle que soit la valeur.
-for valeur in (0, 1, 7, 99, 100, 101, 529, 9999, 123456):
+# Panne relevée en relecture : pour une valeur entre 17 et 20, 165 et 204,
+# 1 640 et 2 050… aucune graduation ronde ne convenait, l'échelle retombait sur
+# 0-8 et une semaine à 182 pointait vers 0,5. Neuf valeurs choisies à la main
+# étaient toutes tombées à côté : on balaie.
+hors = []
+for valeur in list(range(0, 30000)) + [m * 10 ** k for k in range(2, 7) for m in range(100, 1000)]:
     pas_, intervalles = bs._echelle(valeur)
-    verifie("échelle pour %d : la valeur tient dans le cadran" % valeur,
-            pas_ * intervalles >= valeur and 6 <= intervalles <= 10,
-            "pas %s × %s intervalles" % (pas_, intervalles))
+    if pas_ * intervalles < valeur or not 5 <= intervalles <= 10:
+        hors.append(valeur)
+verifie("l'échelle d'un cadran contient toujours sa valeur", not hors, "hors échelle : %s" % hors[:8])
+
+
+def boites(fragment, classe_n):
+    """Boîte (x0, y0, x1, y1) de chaque texte en police de titre d'un fragment :
+    les chiffres animés (classe « n ») si classe_n, les autres sinon."""
+    atlas = typo.polices["titre"]["g"]
+    out = []
+    for tx, ty, ech, uses in re.findall(
+            r'<g transform="translate\(([-\d.]+) ([-\d.]+)\) scale\(([\d.]+)\)"[^>]*>'
+            r'((?:<use href="#t[0-9a-f]+"[^>]*/>)+)</g>', fragment):
+        if ('class="n"' in uses) != classe_n:
+            continue
+        poses = re.findall(r'<use href="#t([0-9a-f]+)"(?: x="([-\d.]+)")?', uses)
+        ech = float(ech)
+        droite = (float(poses[-1][1] or 0) + atlas[chr(int(poses[-1][0], 16))][0]) * ech
+        out.append((float(tx), float(ty) - typo.capitale("titre", ech * 1000), float(tx) + droite, float(ty)))
+    return out
+
+
+# Pannes relevées en relecture, sur le cadran « meilleur mois » des données
+# réelles : à 9 h et à 3 h, « 200 » et « 1000 » touchaient leur graduation (on
+# lisait « −200 ») ; et un record à quatre chiffres mordait sur le dernier
+# chiffre de l'échelle. Chaque chiffre doit rester à l'écart de toutes les
+# graduations, et la valeur à l'écart de tous les chiffres.
+touche = []
+for rayon in (130, 98):
+    for valeur in (921, 1300, 1810, 2000, 3200, 5000, 9000, 9999):
+        cadran = "".join(bs._cadran(bs.Feuille(900, 440, SOMBRE, "essai"), 0, 0, rayon, valeur, "Essai", "essai",
+                                    plein=True))
+        traits = re.search(r'<path d="([^"]+)" stroke="[^"]+" stroke-width="1.8"', cadran).group(1)
+        bouts = [tuple(map(float, q.split(","))) for q in re.findall(r"L([-\d.]+,[-\d.]+)", traits)]
+        graduations, valeurs = boites(cadran, False), boites(cadran, True)
+        for x0, y0, x1, y1 in graduations:
+            if any(x0 - 1 < bx < x1 + 1 and y0 - 1 < by < y1 + 1 for bx, by in bouts):
+                touche.append("R=%d, %d : un chiffre touche sa graduation" % (rayon, valeur))
+            if any(x0 < vx1 + 1 and vx0 - 1 < x1 and y0 < vy1 and vy0 < y1 for vx0, vy0, vx1, vy1 in valeurs):
+                touche.append("R=%d, %d : la valeur mord sur un chiffre" % (rayon, valeur))
+        if len(valeurs) != 1 or len(graduations) < 4:
+            touche.append("R=%d, %d : cadran illisible pour le test" % (rayon, valeur))
+verifie("cadran : chiffres dégagés des graduations, valeur dégagée des chiffres", not touche,
+        " · ".join(sorted(set(touche))[:4]))
+
+# La période sous « meilleure semaine » porte l'année dès qu'elle n'est plus de
+# l'année en cours : elle doit rétrécir plutôt que de sortir du filet du cadran.
+cadran = "".join(bs._cadran(bs.Feuille(900, 440, SOMBRE, "essai"), 0, 0, 130, 529, "Meilleure semaine",
+                            "28 déc. 2025 – 3 janv. 2026"))
+ech_detail = [float(e) for e in re.findall(r'scale\(([\d.]+)\)"[^>]*><use href="#m', cadran)][-1]
+verifie("cadran : une période à cheval sur deux années tient dans le filet",
+        typo.largeur("mono", "28 déc. 2025 – 3 janv. 2026", ech_detail * 1000) <= 0.87 * 130,
+        "largeur : %.1f" % typo.largeur("mono", "28 déc. 2025 – 3 janv. 2026", ech_detail * 1000))
+
+# Français : le premier du mois s'écrit « 1er », et une série d'un seul jour
+# n'est pas une période « du 25 au 25 ».
+verifie("le premier du mois s'écrit 1er",
+        bs.jour_fr("2026-12-01") == "1er déc. 2026" and bs.court("2026-03-01") == "1er mars"
+        and bs.horodatage(datetime(2026, 12, 1, 0, 4, tzinfo=timezone.utc)) == "mis à jour le 1er déc. 2026 à 00h04 UTC"
+        and bs.horodatage(datetime(2026, 12, 1, 0, 4, tzinfo=timezone.utc), court=True) == "1er déc. 2026 · 00h04 UTC")
+verifie("une série d'un seul jour porte une seule date",
+        bs.periode("2026-11-25", "2026-11-25", "2026-11-25") == "25 nov."
+        and bs.periode("2025-11-25", "2025-11-25", "2026-11-25") == "25 nov. 2025")
+_date = bs.date
+bs.date = type("D", (date,), {"today": classmethod(lambda c: date(2026, 11, 25))})
+r_neuf = bs.stats({"2026-11-25": 1})
+r_neuf["calcule"] = datetime(2026, 11, 25, 8, 0, tzinfo=timezone.utc)
+desc_neuf = re.search(r"<desc[^>]*>(.*?)</desc>", bs.carte_bord(r_neuf, SOMBRE)).group(1)
+bs.date = _date
+verifie("la description s'accorde au singulier pour un compte tout neuf",
+        "1 contributions" not in desc_neuf and "1 jours" not in desc_neuf and "1 jour actif sur 1" in desc_neuf,
+        desc_neuf)
 
 # Panne relevée en essai de charge : au-delà de 999 999, le compteur à six
 # rouleaux perdait son chiffre de tête et affichait 400 000 pour 4 400 000.
@@ -510,6 +587,15 @@ finals = re.findall(r'<g transform="translate\(0 [\d.]+\) scale[^>]*>(?:<use [^>
                     r'(?: x="[\d.]+")?/></g>', rouleaux)
 verifie("le compteur garde tous ses chiffres au-delà du million",
         "".join(chr(int(h, 16)) for h in finals) == "4400000", "lus : %s" % finals)
+# ... et ses rouleaux, plus nombreux que prévu, restent dans leur boîtier.
+boitier = re.match(r'<rect x="([-\d.]+)" y="[-\d.]+" width="([\d.]+)"', rouleaux)
+largeur_rouleau = float(re.search(r'<clipPath id="ck"><rect width="([\d.]+)"', "".join(feuille.defs)).group(1))
+droites = [float(x) + largeur_rouleau for x in re.findall(r'<g transform="translate\(([-\d.]+) [-\d.]+\)" clip-path', rouleaux)]
+verifie("sept rouleaux tiennent dans le boîtier prévu pour six",
+        len(droites) == 7 and max(droites) <= float(boitier.group(1)) + float(boitier.group(2)) + 0.01
+        and float(boitier.group(2)) <= (6 * 30 + 5 * 3 + 10) * 1.18 + 0.01,
+        "bord droit des rouleaux : %.1f, boîtier jusqu'à %.1f, large de %s" % (
+            max(droites), float(boitier.group(1)) + float(boitier.group(2)), boitier.group(2)))
 
 # --- 7. Empreinte ---------------------------------------------------------------
 # Deux calculs des mêmes données à des heures différentes doivent donner la
@@ -527,22 +613,41 @@ def empreinte_de(resultat):
                               capture_output=True, text=True).stdout.strip()
 
 
+# La date reste figée pendant toute la section : le skyline dépend du jour
+# courant, et les données de référence finiraient par sortir de la frise.
+_date = bs.date
+bs.date = type("D", (date,), {"today": classmethod(lambda c: date(2026, 10, 7))})
 empreintes = []
 for jour_, heure, minute in ((7, 8, 17), (7, 9, 48), (8, 23, 0)):
     r["calcule"] = datetime(2026, 10, jour_, heure, minute, tzinfo=timezone.utc)
     empreintes.append(empreinte_de(r))
 verifie("l'empreinte ne dépend que des chiffres, pas de l'heure du calcul",
         bool(empreintes[0]) and len(set(empreintes)) == 1, "empreintes : %s" % empreintes)
+# Trois changements de nature différente. Le total est partout — dessin et
+# description des deux cartes : à lui seul il ne prouverait pas grand-chose.
+# Les trente derniers jours ne vivent que sur le tableau de bord ; une journée
+# qui bouge ne se voit que dans les barres du skyline, pas dans sa description.
 r_bouge = dict(r)
 r_bouge["total"] = r["total"] + 1
-verifie("un chiffre qui bouge change l'empreinte", empreinte_de(r_bouge) != empreintes[0])
+verifie("un total qui bouge change l'empreinte", empreinte_de(r_bouge) != empreintes[0])
+r_bouge = dict(r)
+r_bouge["trente"] = r["trente"] + 1
+verifie("un chiffre du seul tableau de bord change l'empreinte", empreinte_de(r_bouge) != empreintes[0])
+r_bouge = dict(r)
+r_bouge["jours"] = dict(r["jours"])
+calme = min((k for d_, n, _, _ in cases if n > 0 for k in [d_.isoformat()]), key=r["jours"].get)
+r_bouge["jours"][calme] += 1
+verifie("une seule journée qui bouge change l'empreinte", empreinte_de(r_bouge) != empreintes[0],
+        "journée : %s" % calme)
+bs.date = _date
 
-# Rendu de référence. Toute modification de géométrie, d'ordre ou de style
-# change cette empreinte. Si c'est voulu : regarder le rendu (deux thèmes,
-# bureau et mobile, pendant et après l'animation), puis recopier la nouvelle
-# valeur ici.
-REFERENCE = "9328840d32ab5fb1"
-obtenue = hashlib.sha256((svg + svg_bord).encode("utf-8")).hexdigest()[:16]
+# Rendu de référence : les huit cartes publiées — deux sujets, bureau et
+# mobile, sombre et clair. Toute modification de géométrie, d'ordre, de style
+# ou de palette change cette empreinte. Si c'est voulu : regarder le rendu
+# (deux thèmes, bureau et mobile, pendant et après l'animation), puis recopier
+# la nouvelle valeur ici.
+REFERENCE = "419ddc47f51d20a4"
+obtenue = hashlib.sha256(svg_toutes.encode("utf-8")).hexdigest()[:16]
 verifie("le rendu de référence n'a pas bougé", obtenue == REFERENCE, "obtenue : %s" % obtenue)
 
 print()

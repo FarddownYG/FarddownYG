@@ -319,7 +319,7 @@ def planche_r32(p, mobile=False):
         o, _ = _r32_profil(f, 22, 196, k)
         f += o
         f += _cote(f, 22, 22 + R32["L"] * k, 218, "4 545 mm")
-        f += _cote(f, 22 + R32["av"] * k, 22 + (R32["av"] + R32["E"]) * k, 240, "empattement 2 615")
+        f += _cote(f, 22 + R32["av"] * k, 22 + (R32["av"] + R32["E"]) * k, 240, "empattement 2 615 mm")
         ka = 0.098
         o, _ = _r32_arriere(f, 112, 420, ka)
         f += o
@@ -331,7 +331,7 @@ def planche_r32(p, mobile=False):
                                    "4 roues motrices", "4 roues directrices")):
             f += f.texte("mono", ligne, 9.6, tx, ty + 48 + i * 17, fill=p["doux"])
         f += f.texte("mono-gras", "« GODZILLA »", 9.2, W / 2.0, H - 92, ancre="middle", approche=2.2, fill=p["o"])
-        f += f.texte("mono", "29 victoires en 29 courses · Groupe A, 1990 – 1993", 8.6, W / 2.0, H - 75,
+        f += f.texte("mono", "29 victoires en 29 courses · Groupe A, Japon, 1990 – 1993", 8.6, W / 2.0, H - 75,
                      ancre="middle", fill=p["doux"])
         f += f.texte("ital", "La voiture de mes rêves.", 17, W / 2.0, H - 40, ancre="middle", fill=p["o"])
     else:
@@ -394,9 +394,10 @@ def _entree_embleme(c):
 def planche_heros(p, mobile=False):
     W, H = (450, 692) if mobile else (900, 470)
     f = Feuille(W, H, p, "Yanis — l’as de pique",
-                "Un as de pique en filigrane, crème et or sur noir. Yanis : ingénieur cybersécurité, fondateur de "
-                "Classor, développeur de jeux vidéo, de logiciels et d'outils. Depuis toujours : coder des outils, "
-                "en vivre. " + CREDO + " — Lelouch, Code Geass.")
+                "Un as de pique en filigrane, %s. Yanis : ingénieur cybersécurité, fondateur de "
+                "Classor, développeur de jeux vidéo, de logiciels et d’outils. Depuis toujours : coder des outils, "
+                "en vivre. %s — Lelouch, Code Geass."
+                % ("crème et or sur noir" if p["nom"] == "dark" else "encre et or sur crème", CREDO))
     cadre(f, None)
     sombre = p["nom"] == "dark"
     f.definis('<radialGradient id="lu"><stop offset="0" stop-color="%s" stop-opacity="%s"/>'
@@ -492,7 +493,7 @@ def planche_signature(p, mobile=False):
 
 def avatar(p):
     """La photo de profil : le filigrane seul, cadré pour un recadrage en disque."""
-    f = Feuille(1024, 1024, p, "As de pique", "L'as de pique en filigrane, crème et or sur noir.")
+    f = Feuille(1024, 1024, p, "As de pique", "L’as de pique en filigrane, crème et or sur noir.")
     f.definis('<radialGradient id="av" cx="0.5" cy="0.46" r="0.62"><stop offset="0" stop-color="%s"/>'
               '<stop offset="1" stop-color="%s"/></radialGradient>' % (melange(p["fond"], p["o"], 0.10), p["creux"]))
     f += '<rect width="1024" height="1024" fill="url(#av)"/>'
