@@ -52,26 +52,3 @@
 <div align="center">
   <sub>♠ <em>une lame s’affûte tous les jours</em></sub>
 </div>
-
-<!-- ESSAI-MEDIA -->
-<div align="center">
-  <picture>
-    <source media="(max-width: 700px) and (prefers-color-scheme: dark)" srcset="assets/divider-dark.svg">
-    <source media="(max-width: 700px) and (prefers-color-scheme: light)" srcset="assets/divider-light.svg">
-    <source media="(prefers-color-scheme: dark)" srcset="assets/header-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/header-light.svg">
-    <img src="assets/header-dark.svg" alt="essai" width="100%">
-  </picture>
-</div>
-
-<details>
-<summary><b>Sous le capot</b></summary>
-
-Texte replié, avec un <code>code</code> et une liste :
-
-- un
-- deux
-
-</details>
-
-<p align="center"><a href="https://classor.fr"><img src="assets/divider-dark.svg" width="40%" alt="lien"></a></p>
