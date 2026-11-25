@@ -91,6 +91,35 @@ def arc(cx, cy, r, a0, a1):
     return "M%.2f,%.2f A%s,%s 0 %d 1 %.2f,%.2f" % (x0, y0, _n(r), _n(r), 1 if a1 - a0 > 180 else 0, x1, y1)
 
 
+def lisse(points, ferme=False):
+    """Courbe lisse passant par des points : le `d` SVG (Béziers cubiques).
+
+    Chaque point est (x, y) ou (x, y, "c") pour un angle vif. Entre deux
+    angles, la courbe est une spline de Catmull-Rom : on dessine en posant des
+    points sur le contour, sans régler de poignées."""
+    pts = [(q[0], q[1], len(q) > 2) for q in points]
+    if ferme:
+        pts.append((pts[0][0], pts[0][1], True))
+    d = ["M%.1f,%.1f" % pts[0][:2]]
+    debut = 0
+    for i in range(1, len(pts)):
+        if not (pts[i][2] or i == len(pts) - 1):
+            continue
+        troncon = pts[debut:i + 1]
+        if len(troncon) == 2:
+            d.append("L%.1f,%.1f" % troncon[1][:2])
+        else:
+            for j in range(len(troncon) - 1):
+                p0 = troncon[max(j - 1, 0)]
+                p1, p2 = troncon[j], troncon[j + 1]
+                p3 = troncon[min(j + 2, len(troncon) - 1)]
+                d.append("C%.1f,%.1f %.1f,%.1f %.1f,%.1f" % (
+                    p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0,
+                    p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0, p2[0], p2[1]))
+        debut = i
+    return "".join(d) + ("Z" if ferme else "")
+
+
 def guilloche(cx, cy, R, k, creux, tours=1, pas=720):
     """Rosace guillochée : une sinusoïde enroulée sur un cercle. k lobes,
     amplitude `creux`. Superposer plusieurs phases donne la moire des cadrans
