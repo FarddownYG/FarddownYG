@@ -97,16 +97,24 @@ class Typo:
         return ident
 
     def ecrire(self, police, texte, corps, x, y, ancre="start", approche=0.0, tab=False,
-               fill=None, attrs=""):
-        """Un <g> de <use>, ligne de base en y. ancre : start, middle ou end."""
+               fill=None, attrs="", cascade=None):
+        """Un <g> de <use>, ligne de base en y. ancre : start, middle ou end.
+
+        cascade=(départ, pas) en secondes : chaque glyphe reçoit la classe « n »
+        et un retard croissant, pour une entrée lettre à lettre (la feuille de
+        style de l'appelant définit l'animation « n »)."""
         poses, largeur = self.suite(police, texte, corps, approche, tab)
         if ancre == "end":
             x -= largeur
         elif ancre == "middle":
             x -= largeur / 2.0
         ech = corps / self.polices[police]["upm"]
-        uses = "".join('<use href="#%s"%s/>' % (self.ref(police, cle), ' x="%s"' % _n(gx) if gx else "")
-                       for cle, gx in poses if self._glyphe(police, cle)[1])
+        visibles = [(cle, gx) for cle, gx in poses if self._glyphe(police, cle)[1]]
+        uses = "".join(
+            '<use href="#%s"%s%s/>' % (
+                self.ref(police, cle), ' x="%s"' % _n(gx) if gx else "",
+                ' class="n" style="animation-delay:%ss"' % _n(cascade[0] + i * cascade[1]) if cascade else "")
+            for i, (cle, gx) in enumerate(visibles))
         return '<g transform="translate(%s %s) scale(%s)"%s%s>%s</g>' % (
             _n(x), _n(y), ("%.5f" % ech).rstrip("0"), ' fill="%s"' % fill if fill else "",
             " " + attrs if attrs else "", uses)

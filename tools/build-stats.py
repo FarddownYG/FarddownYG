@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """Calcule toutes les statistiques du profil et en fait des cartes SVG.
 
-Deux cartes, deux thèmes chacune, toutes issues d'UNE seule lecture du
-calendrier de contributions public de GitHub :
+Deux cartes, toutes issues d'UNE seule lecture du calendrier de contributions
+public de GitHub :
 
-    skyline    l'année en relief, un cube par jour ; dans les coins : total,
-               record en une journée, plus longue série, série actuelle
-    records    meilleure semaine · jours actifs · moyenne · meilleur mois
+    skyline    l'année en relief, un cube par jour ; total, record en une
+               journée, plus longue série, série actuelle
+    bord       le tableau de bord : meilleure semaine et meilleur mois sur deux
+               cadrans à aiguille, compteur du total, trente derniers jours,
+               jours actifs, moyenne par jour actif
+
+Chaque carte sort en quatre fichiers : bureau et mobile (suffixe -m), thème
+sombre et thème clair. Le texte est composé en tracés par typo.py à partir de
+l'atlas glyphes.json ; le système de design vit dans dessin.py. Python pur,
+aucune dépendance.
 
 Aucun service tiers : les instances publiques gratuites tombent ou servent
 du cache, et rien ne permet alors de savoir si un chiffre est à jour. Ici
@@ -30,6 +37,11 @@ import sys
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dessin import (ABBR, FLAMME, MOIS, PALETTES, Feuille, arc, cadre, fr,  # noqa: E402
+                    horodatage, pique, polaire, rosace, teinte)
+from typo import _n  # noqa: E402
+
 LOGIN = os.environ.get("LOGIN") or "FarddownYG"
 TOKEN = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
 UA = "FarddownYG-profile-stats"
@@ -42,12 +54,6 @@ UA = "FarddownYG-profile-stats"
 # relues au moins une fois par heure, ce qui rattrape d'éventuels commits
 # antidatés.
 CACHE = os.environ.get("CACHE_ANNEES") or ""
-
-MOIS = ["janvier", "février", "mars", "avril", "mai", "juin",
-        "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
-ABBR = ["janv.", "févr.", "mars", "avr.", "mai", "juin",
-        "juil.", "août", "sept.", "oct.", "nov.", "déc."]
-NNBSP = " "  # espace fine insécable : séparateur de milliers français
 
 
 # ---------------------------------------------------------------- récupération
@@ -329,8 +335,16 @@ def stats(jours):
         if i >= min(6, len(suite) - 1) and cumul > semaine:
             semaine, fin_semaine = cumul, i
 
+    # Trente derniers jours, et nombre de jours écoulés depuis la première
+    # contribution — la fenêtre finit sur la dernière journée connue, jamais
+    # avant aujourd'hui.
+    fin = max(_jour(max(actifs)), date.today())
+    trente = sum(jours.get((fin - timedelta(days=k)).isoformat(), 0) for k in range(30))
+
     return {
         "jours": jours,
+        "trente": trente,
+        "ecoules": (fin - _jour(min(actifs))).days + 1,
         "semaine": (semaine, suite[max(0, fin_semaine - 6)][0].isoformat(),
                     suite[fin_semaine][0].isoformat()),
         "total": total,
@@ -345,10 +359,6 @@ def stats(jours):
         "longue": longue,
         "calcule": datetime.now(timezone.utc),
     }
-
-
-def fr(n):
-    return "{:,}".format(int(n)).replace(",", NNBSP)
 
 
 def jour_fr(iso):
@@ -377,75 +387,67 @@ def mois_fr(iso):
     return "%s %s" % (MOIS[int(m) - 1], a)
 
 
-def horodatage(dt):
-    return "mis à jour le %d %s %d à %02dh%02d UTC" % (
-        dt.day, ABBR[dt.month - 1], dt.year, dt.hour, dt.minute)
+def pluriel(v, mot):
+    return mot if v <= 1 else mot + "s"
+
+
+def decimal(v):
+    return ("%.1f" % v).replace(".", ",")
 
 
 # ------------------------------------------------------------------- rendu
+#
+# Tout le texte est composé en tracés (typo.py) : même dessin sur tous les
+# appareils, largeurs exactes. Chaque carte existe en deux mises en page —
+# bureau (900 de large) et mobile (450 de large, plus haute, texte plus gros
+# à l'écran) — que le README choisit par <picture> selon la largeur de l'écran.
+#
+# Règle d'animation, valable partout : chaque élément porte son état FINAL en
+# attribut ; l'animation part d'ailleurs et y revient. Sans CSS, ou en
+# mouvement réduit, la carte s'affiche donc complète.
 
-DARK = dict(bg="#0B0E13", border="#2A3140", gold="#C8A96A", text="#E8EAF0",
-            muted="#9AA3B2", dim="#6B7280", rule="#2A3140", grid="#1B212B")
-LIGHT = dict(bg="#FBF7EE", border="#D9D2C2", gold="#8C6E33", text="#14171C",
-             muted="#5F6672", dim="#8B857A", rule="#E2DACA", grid="#EDE5D4")
-
-SANS = "'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif"
-MONO = "'JetBrains Mono','Cascadia Code','SF Mono',Consolas,'DejaVu Sans Mono',monospace"
-
-# Flamme de la série en cours, dessinée dans une boîte de 18x18.
-# La langue de feu latérale est ce qui la rend lisible à petite taille.
-FLAMME = ("M9,0 C10.4,4 14.1,6.1 14.1,10.8 C14.1,14.8 11.8,17.6 9,17.6 "
-          "C6.2,17.6 3.9,14.8 3.9,10.8 C3.9,8 6.3,6.6 6.9,3.4 "
-          "C7.6,7 9.3,7.5 9.6,5.2 C9.9,3 8.4,1.8 9,0 Z")
-
-
-def esc(s):
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+ANIM = (
+    # entrée d'un chiffre, glyphe par glyphe (unités de police : 300 = 0,3 em)
+    ".n{animation:n .7s cubic-bezier(.2,.8,.2,1) both}"
+    "@keyframes n{from{opacity:0;transform:translateY(300px)}}"
+)
+SANS_ANIM = "@media (prefers-reduced-motion:reduce){%s{animation:none}}"
 
 
-def cadre(w, h, titre, p, r):
-    """Contour commun : bordure, titre en or, horodatage discret."""
-    return [
-        '<svg viewBox="0 0 %d %d" width="%d" height="%d" xmlns="http://www.w3.org/2000/svg" '
-        'role="img" aria-label="%s">' % (w, h, w, h, esc(titre)),
-        '  <rect x="0.7" y="0.7" width="%.1f" height="%.1f" rx="10" fill="%s" stroke="%s" '
-        'stroke-width="1.4"/>' % (w - 1.4, h - 1.4, p["bg"], p["border"]),
-        '  <text x="28" y="40" font-family="%s" font-size="11" letter-spacing="3" fill="%s">'
-        '// %s</text>' % (MONO, p["gold"], esc(titre.upper())),
-        '  <text x="%d" y="40" text-anchor="end" font-family="%s" font-size="10" fill="%s">'
-        '%s</text>' % (w - 28, MONO, p["dim"], esc(horodatage(r["calcule"]))),
-    ]
+def _bloc(f, x, y, ancre, label, valeur, unite, detail, flamme=False, corps=48, depart=0.9,
+          place=None):
+    """Un chiffre et sa légende. Renvoie (éléments, boîte occupée).
 
+    Les largeurs sont exactes : la boîte sert à réserver la place du bloc dans
+    le cadrage du skyline, sans marge de sécurité pour une police de repli.
+    place : largeur disponible ; si le chiffre et son unité n'y tiennent pas,
+    l'unité saute (le libellé suffit) plutôt que de déborder sur le voisin."""
+    p = f.p
+    wl = f.largeur("texte", label, 13.5) + (17 if flamme else 0)
+    wv = f.largeur("titre", valeur, corps)
+    wu = f.largeur("texte", unite, 15)
+    if place is not None and wv + 9 + wu > place:
+        unite, wu = "", -9
+    wd = f.largeur("mono", detail, 10.5)
+    w = max(wl, wv + 9 + wu, wd)
 
-def tuile(cx, val, lab, det, p, phare=False, y=128):
-    return [
-        '  <text x="%g" y="%d" text-anchor="middle" font-family="%s" font-size="42" '
-        'font-weight="700" fill="%s">%s</text>'
-        % (cx, y, SANS, p["gold"] if phare else p["text"], esc(val)),
-        '  <text x="%g" y="%d" text-anchor="middle" font-family="%s" font-size="12" fill="%s">'
-        '%s</text>' % (cx, y + 26, SANS, p["muted"], esc(lab)),
-        '  <text x="%g" y="%d" text-anchor="middle" font-family="%s" font-size="10.5" fill="%s">'
-        '%s</text>' % (cx, y + 46, MONO, p["dim"], esc(det)),
-    ]
+    def cale(largeur):
+        return x - largeur if ancre == "end" else x
 
-
-def carte_records(r, p):
-    o = cadre(900, 200, "Records", p, r)
-    tuiles = [
-        (fr(r["semaine"][0]), "Meilleure semaine",
-         periode(r["semaine"][1], r["semaine"][2], max(r["jours"])), True),
-        (fr(r["actifs"]), "Jours actifs", "depuis le %s" % jour_fr(r["premier"]), False),
-        (("%.1f" % r["moyenne"]).replace(".", ","), "Par jour actif", "en moyenne", False),
-        (fr(r["mois_total"]), "Meilleur mois", mois_fr(r["mois"]), False),
-    ]
-    for i, (val, lab, det, phare) in enumerate(tuiles):
-        cx = 24 + 213 * i + 106.5
-        if i:
-            o.append('  <path d="M%g,84 V178" stroke="%s" stroke-width="1" opacity="0.75"/>'
-                     % (24 + 213 * i, p["rule"]))
-        o += tuile(cx, val, lab, det, p, phare)
-    o.append('</svg>')
-    return "\n".join(o) + "\n"
+    base = y + 16 + f.t.capitale("titre", corps)
+    o, lx = [], cale(wl)
+    if flamme:
+        o.append('<path d="%s" transform="translate(%s %s) scale(0.78)" fill="%s"/>'
+                 % (FLAMME, _n(lx), _n(y - 12.8), p["rouge"]))
+        lx += 17
+    o.append(f.texte("texte", label, 13.5, lx, y, fill=p["doux"]))
+    vx = cale(wv + 9 + wu)
+    o.append(f.texte("titre", valeur, corps, vx, base, fill=p["o"], cascade=(depart, 0.055)))
+    if unite:
+        o.append(f.texte("texte", unite, 15, vx + wv + 9, base, fill=p["encre"]))
+    o.append(f.texte("mono", detail, 10.5, cale(wd), base + 22, fill=p["discret"]))
+    gauche = cale(w)
+    return o, (gauche - 6, y - 16, gauche + w + 6, base + 28)
 
 
 # ------------------------------------------------------------------- skyline
@@ -469,26 +471,14 @@ SKY_DALLE = 0.2        # épaisseur d'une journée vide
 SKY_ATTENTE = 0.35     # avant que la vague parte, en secondes
 SKY_DUREE = 1.4        # durée de la vague
 SKY_VAGUE = 0.42       # part de la vague passée à attendre son tour
-SKY_SCENE = (28, 58, 872, 548)   # zone de dessin : x0, y0, x1, y1
+SKY_SCENE = (28, 58, 872, 548)          # zone de dessin, bureau : x0, y0, x1, y1
+SKY_SCENE_MOBILE = (12, 54, 438, 304)   # mobile : la scène seule, chiffres dessous
 # Débord, en pixels, des faces latérales sous les faces peintes après elles.
 # Chaque face est lissée séparément : deux faces qui se touchent bord à bord
 # laissent passer le fond sur leur arête, un filet clair très visible sur les
 # barres sombres du thème clair. La face du dessous dépasse donc un peu sous
 # celle qui la recouvre — droite sous gauche, les deux sous le dessus.
 SKY_DEBORD = 0.6
-
-# Cinq teintes par thème : journée vide, puis quatre niveaux d'activité. L'or
-# du profil en est le sommet ; en clair l'ordre s'inverse, la plus forte
-# activité est la plus sombre, comme sur le graphe de GitHub.
-SKY_NIVEAUX = {
-    DARK["bg"]: ("#23262B", "#4A3F2A", "#7D6639", "#B0904F", "#E0C27F"),
-    LIGHT["bg"]: ("#EAE5DA", "#E8D5A6", "#CFAA5C", "#A27C33", "#6B501D"),
-}
-
-
-def _teinte(hexa, facteur):
-    r, g, b = (int(hexa[i:i + 2], 16) for i in (1, 3, 5))
-    return "#%02X%02X%02X" % tuple(int(round(c * facteur)) for c in (r, g, b))
 
 
 def _hauteur(n, record):
@@ -511,8 +501,11 @@ def _grille(jours):
     """Cinquante-trois semaines finissant sur la dernière journée connue — celle
     du fuseau du compte, comme le graphe du profil. Lundi en haut de colonne."""
     # Jamais avant aujourd'hui : une donnée manquante en fin de série ne doit
-    # pas faire reculer la fenêtre en silence.
-    fin = max(_jour(max(jours)), date.today())
+    # pas faire reculer la fenêtre en silence. Jamais après non plus, sauf si
+    # le lendemain porte déjà des contributions (fuseau du compte en avance sur
+    # l'UTC) : la page de GitHub liste parfois demain, vide, et la frise se
+    # terminait alors par une case qui n'existe pas encore.
+    fin = max(_jour(max(k for k, v in jours.items() if v > 0)), date.today())
     debut = fin - timedelta(days=364)
     debut -= timedelta(days=debut.weekday())
     cases, d, i = [], debut, 0
@@ -541,57 +534,37 @@ def _faces(x0, y0, z, ecran):
     )
 
 
-def _bloc(x, y, ancre, label, valeur, unite, detail, p, icone=False):
-    """Un chiffre en coin, à la manière de l'original : intitulé, grand
-    chiffre suivi de son unité sur la même ligne de base, détail dessous.
-    Tout est aligné sur le bord du bloc ; l'unité suit le chiffre dans le même
-    <text>, ce qui évite d'avoir à mesurer la largeur des glyphes."""
-    o, lx = [], x
-    if icone:
-        # flamme de la série en cours, devant l'intitulé (blocs alignés à gauche)
-        o.append('  <path d="%s" transform="translate(%.1f,%.1f) scale(0.78)" fill="%s"/>'
-                 % (FLAMME, x, y - 12.6, p["gold"]))
-        lx = x + 18
-    o.append('  <text x="%.1f" y="%.1f" text-anchor="%s" font-family="%s" font-size="13" '
-             'fill="%s">%s</text>' % (lx, y, ancre, SANS, p["muted"], esc(label)))
-    o.append('  <text x="%.1f" y="%.1f" text-anchor="%s" font-family="%s">'
-             '<tspan font-size="48" font-weight="700" letter-spacing="-1" fill="%s">%s</tspan>'
-             '<tspan dx="9" font-size="15" fill="%s">%s</tspan></text>'
-             % (x, y + 50, ancre, SANS, p["gold"], esc(valeur), p["text"], esc(unite)))
-    o.append('  <text x="%.1f" y="%.1f" text-anchor="%s" font-family="%s" font-size="11" '
-             'fill="%s">%s</text>' % (x, y + 72, ancre, MONO, p["dim"], esc(detail)))
-    return o
+def _blocs_skyline(f, r, mobile):
+    """Les quatre chiffres du skyline : (éléments, boîtes réservées)."""
+    nc, c1, c2 = r["courante"]
+    nl, l1, l2 = r["longue"]
+    ref = max(r["jours"])
+    textes = [
+        ("Total", fr(r["total"]), pluriel(r["total"], "contribution"),
+         "depuis le %s" % jour_fr(r["premier"]), False),
+        ("Record en une journée", fr(r["record"]), pluriel(r["record"], "contribution"),
+         jour_fr(r["record_date"]), False),
+        ("Plus longue série", fr(nl), pluriel(nl, "jour"), periode(l1, l2, ref) if nl else "—", False),
+        ("Série actuelle", fr(nc), pluriel(nc, "jour"), periode(c1, c2, ref) if nc else "—", True),
+    ]
+    if mobile:
+        places = [(26, 338, "start"), (236, 338, "start"), (26, 444, "start"), (236, 444, "start")]
+        corps = 38
+    else:
+        X0, Y0, X1, Y1 = SKY_SCENE
+        places = [(X1 - 4, Y0 + 22, "end"), (X1 - 4, Y0 + 122, "end"),
+                  (X0 + 4, Y1 - 172, "start"), (X0 + 4, Y1 - 72, "start")]
+        corps = 48
+    elements, boites = [], []
+    for i, ((x, y, ancre), (label, valeur, unite, detail, flamme)) in enumerate(zip(places, textes)):
+        o, boite = _bloc(f, x, y, ancre, label, valeur, unite, detail, flamme, corps, 1.0 + 0.16 * i,
+                         place=196 if mobile else None)
+        elements += o
+        boites.append(boite)
+    return elements, boites
 
 
-# Chasse des glyphes en cadratins, métriques d'Arial/Helvetica. Une image SVG
-# ne peut pas mesurer son texte ; il faut donc l'estimer pour réserver la place
-# des chiffres en coin. Les caractères absents valent 0,6.
-CHASSE = dict(zip("0123456789", [0.556] * 10))
-CHASSE.update({" ": 0.278, NNBSP: 0.2, ".": 0.278, ",": 0.278, "–": 0.556, "—": 1.0,
-               "a": 0.556, "b": 0.556, "c": 0.5, "d": 0.556, "e": 0.556, "é": 0.556,
-               "f": 0.278, "g": 0.556, "h": 0.556, "i": 0.222, "j": 0.222, "k": 0.5,
-               "l": 0.222, "m": 0.833, "n": 0.556, "o": 0.556, "p": 0.556, "q": 0.556,
-               "r": 0.333, "s": 0.5, "t": 0.278, "u": 0.556, "û": 0.556, "v": 0.5,
-               "w": 0.722, "x": 0.5, "y": 0.5, "z": 0.5})
-MARGE_POLICE = 1.15   # une police de repli comme DejaVu Sans est plus large
-
-
-def _largeur(texte, taille, chasse=None):
-    if chasse is not None:      # police à chasse fixe
-        return len(texte) * taille * chasse
-    return sum(CHASSE.get(c, 0.6) for c in texte) * taille * MARGE_POLICE
-
-
-def _emprise(x, y, ancre, label, valeur, unite, detail, icone=False):
-    """Rectangle occupé par un bloc de _bloc(), majoré : x0, y0, x1, y1."""
-    w = max(_largeur(label, 13) + (18 if icone else 0),
-            _largeur(valeur, 48) - len(valeur) + 9 + _largeur(unite, 15),
-            _largeur(detail, 11, chasse=0.62))
-    gauche = x - w if ancre == "end" else x
-    return (gauche - 6, y - 16, gauche + w + 6, y + 78)
-
-
-def carte_skyline(r, p):
+def carte_skyline(r, p, mobile=False):
     cases = _grille(r["jours"])
     semaines = cases[-1][2] + 1
     actifs = sorted(n for _, n, _, _ in cases if n > 0)
@@ -599,26 +572,21 @@ def carte_skyline(r, p):
     record = actifs[-1] if actifs else 0
     marge = (1 - SKY_CUBE) / 2
 
-    X0, Y0, X1, Y1 = SKY_SCENE
+    W, H = (450, 566) if mobile else (900, 600)
+    X0, Y0, X1, Y1 = SKY_SCENE_MOBILE if mobile else SKY_SCENE
+    nc, nl = r["courante"][0], r["longue"][0]
+    f = Feuille(W, H, p, "Skyline des contributions",
+                "%s %s depuis le %s. Record en une journée : %s, le %s. Plus longue série : %s %s. "
+                "Série actuelle : %s %s."
+                % (fr(r["total"]), pluriel(r["total"], "contribution"), jour_fr(r["premier"]),
+                   fr(r["record"]), jour_fr(r["record_date"]), fr(nl), pluriel(nl, "jour"),
+                   fr(nc), pluriel(nc, "jour")))
+    cadre(f, "Skyline", horodatage(r["calcule"], court=mobile))
 
-    # Les quatre chiffres, établis avant le cadrage : leurs coins sont réservés.
-    def unite(v, mot):
-        return mot if v <= 1 else mot + "s"
-
-    nc, c1, c2 = r["courante"]
-    nl, l1, l2 = r["longue"]
-    ref = max(r["jours"])
-    blocs = [
-        (X1 - 4, Y0 + 22, "end", "Total", fr(r["total"]), unite(r["total"], "contribution"),
-         "depuis le %s" % jour_fr(r["premier"]), False),
-        (X1 - 4, Y0 + 122, "end", "Record en une journée", fr(r["record"]),
-         unite(r["record"], "contribution"), jour_fr(r["record_date"]), False),
-        (X0 + 4, Y1 - 172, "start", "Plus longue série", fr(nl), unite(nl, "jour"),
-         periode(l1, l2, ref) if nl else "—", False),
-        (X0 + 4, Y1 - 72, "start", "Série actuelle", fr(nc), unite(nc, "jour"),
-         periode(c1, c2, ref) if nc else "—", True),
-    ]
-    zones = [_emprise(*b) for b in blocs]
+    # Les quatre chiffres, établis avant le cadrage : sur bureau ils occupent
+    # les deux coins que la diagonale laisse vides, et ces coins sont réservés.
+    blocs, boites = _blocs_skyline(f, r, mobile)
+    zones = [] if mobile else boites
 
     # Mois, sous la première semaine de chacun.
     mois, prec = [], None
@@ -629,18 +597,19 @@ def carte_skyline(r, p):
         prec = jour.month
     if len(mois) > 1 and mois[1][0] - mois[0][0] < 3:
         mois.pop(0)
+    corps_mois = 9 if mobile else 10
 
     # Boîtes de la scène hors échelle : chaque cube à pleine hauteur, et
     # l'ancre de chaque étiquette de mois.
-    boites = []
+    scene = []
     for _, n, w, d in cases:
         pts = [_proj(x, y, z) for x in (w + marge, w + marge + SKY_CUBE)
                for y in (d + marge, d + marge + SKY_CUBE) for z in (0, _hauteur(n, record))]
-        boites.append((min(q[0] for q in pts), min(q[1] for q in pts),
-                       max(q[0] for q in pts), max(q[1] for q in pts)))
-    ancres = [(_proj(w + 0.5, 7.2, 0), lab) for w, lab in mois]
-    xs = [b[0] for b in boites] + [b[2] for b in boites] + [a[0][0] for a in ancres]
-    ys = [b[1] for b in boites] + [b[3] for b in boites] + [a[0][1] + 1.0 for a in ancres]
+        scene.append((min(q[0] for q in pts), min(q[1] for q in pts),
+                      max(q[0] for q in pts), max(q[1] for q in pts)))
+    ancres = [(_proj(w + 0.5, 7.2, 0), lab, f.largeur("mono", lab, corps_mois)) for w, lab in mois]
+    xs = [b[0] for b in scene] + [b[2] for b in scene] + [a[0][0] for a in ancres]
+    ys = [b[1] for b in scene] + [b[3] for b in scene] + [a[0][1] + 1.0 for a in ancres]
     lx, ly = max(xs) - min(xs), max(ys) - min(ys)
 
     def place(s):
@@ -648,16 +617,16 @@ def carte_skyline(r, p):
                 Y0 + ((Y1 - Y0) - ly * s) / 2 - min(ys) * s)
 
     def empiete(s, ox, oy):
-        rects = [(ox + a * s, oy + b * s, ox + c * s, oy + d * s) for a, b, c, d in boites]
-        rects += [(ox + q[0] * s - 2 - _largeur(lab, 10, chasse=0.61), oy + q[1] * s + 3,
-                   ox + q[0] * s - 2, oy + q[1] * s + 13) for q, lab in ancres]
+        rects = [(ox + a * s, oy + b * s, ox + c * s, oy + d * s) for a, b, c, d in scene]
+        rects += [(ox + q[0] * s - 2 - wl, oy + q[1] * s + 3, ox + q[0] * s - 2, oy + q[1] * s + 13)
+                  for q, _, wl in ancres]
         return any(a < z2 and c > z0 and b < z3 and d > z1
                    for a, b, c, d in rects for z0, z1, z2, z3 in zones)
 
     # Ajusté à la zone de dessin, puis réduit tant qu'un cube ou un mois entre
     # dans le coin d'un chiffre. La diagonale laisse ces coins libres avec les
-    # données d'aujourd'hui ; un record à cinq chiffres un lundi d'été, ou une
-    # police de repli plus large, suffirait à poser une tour sous un chiffre.
+    # données d'aujourd'hui ; un record à cinq chiffres un lundi d'été suffirait
+    # à poser une tour sous un chiffre.
     s = min((X1 - X0) / lx, (Y1 - Y0) / ly)
     ox, oy = place(s)
     for _ in range(40):
@@ -670,9 +639,7 @@ def carte_skyline(r, p):
         sx, sy = _proj(x, y, z)
         return (ox + sx * s, oy + sy * s)
 
-    H = Y1 + 52
-    o = cadre(900, H, "Skyline", p, r)
-    teintes = SKY_NIVEAUX[p["bg"]]
+    teintes = p["niveaux"]
 
     # Une face latérale est l'image d'un rectangle unité par un cisaillement
     # vertical. La pente de son arête basse et sa largeur ne dépendent que de
@@ -683,29 +650,28 @@ def carte_skyline(r, p):
     h_dalle = SKY_DALLE * SKY_CE * s
     montee = (1 - SKY_VAGUE) * SKY_DUREE
 
-    regles = "".join(".d%d{fill:%s}.g%d{fill:%s}.t%d{fill:%s}"
-                     % (k, _teinte(t, 0.68), k, _teinte(t, 0.84), k, t)
-                     for k, t in enumerate(teintes))
     # Animations CSS plutôt que SMIL : SMIL ignore prefers-reduced-motion, il
     # aurait fallu doubler chaque barre d'une jumelle immobile. Ici le
     # mouvement réduit se coupe d'une ligne, et chaque élément porte sa
     # géométrie finale en attribut — ce qu'affiche aussi un moteur sans CSS.
-    o.append("  <style>%s"
-             ".m,.u{animation:%.2fs cubic-bezier(.33,1,.68,1) var(--t) both}"
-             ".m{animation-name:m}.u{animation-name:u}"
-             "@keyframes m{from{transform:scale(1,%.2f)}to{transform:scale(1,var(--h))}}"
-             "@keyframes u{from{transform:translate(0,var(--d))}to{transform:translate(0,0)}}"
-             "@media (prefers-reduced-motion:reduce){.m,.u{animation:none}}</style>"
-             % (regles, montee, h_dalle))
+    f.style("".join(".d%d{fill:%s}.g%d{fill:%s}.t%d{fill:%s}"
+                    % (k, teinte(t, 0.68), k, teinte(t, 0.84), k, t) for k, t in enumerate(teintes)))
+    f.style(".m,.u{animation:%.2fs cubic-bezier(.33,1,.68,1) var(--t) both}"
+            ".m{animation-name:m}.u{animation-name:u}"
+            "@keyframes m{from{transform:scale(1,%.2f)}to{transform:scale(1,var(--h))}}"
+            "@keyframes u{from{transform:translate(0,var(--d))}to{transform:translate(0,0)}}"
+            % (montee, h_dalle))
+    f.style(ANIM)
+    f.style(SANS_ANIM % ".m,.u,.n")
 
     # Une journée vide est la même dalle partout : dessinée une fois, réutilisée.
     # Ses côtés montent un peu sous le dessus (voir SKY_DEBORD).
     bx, by = ecran(marge, marge, 0)
     droite, gauche, _ = _faces(marge, marge, SKY_DALLE + SKY_DEBORD / (SKY_CE * s), ecran)
     dessus = _faces(marge, marge, SKY_DALLE, ecran)[2]
-    o.append('  <defs><g id="v">' + "".join(
-        '<polygon class="%s" points="%s"/>' % (c, _pts([(x - bx, y - by) for x, y in f]))
-        for c, f in zip(("d0", "g0", "t0"), (droite, gauche, dessus))) + '</g></defs>')
+    f.definis('<g id="v">' + "".join(
+        '<polygon class="%s" points="%s"/>' % (c, _pts([(x - bx, y - by) for x, y in face]))
+        for c, face in zip(("d0", "g0", "t0"), (droite, gauche, dessus))) + '</g>')
 
     # Ordre du peintre : du plus loin au plus proche de la caméra. La vague
     # part de la semaine la plus ancienne, avec un léger décalage par jour.
@@ -714,15 +680,15 @@ def carte_skyline(r, p):
         x0, y0 = w + marge, d + marge
         if n <= 0:
             ux, uy = ecran(x0, y0, 0)
-            o.append('  <use href="#v" x="%.1f" y="%.1f"/>' % (ux, uy))
+            f += '<use href="#v" x="%.1f" y="%.1f"/>' % (ux, uy)
             continue
         k, z = _niveau(n, seuil), _hauteur(n, record)
         h = z * SKY_CE * s
         t = SKY_ATTENTE + ((w / max(1, semaines - 1)) * 0.36 + (d / 6) * 0.06) * SKY_DUREE
         rx, ry = ecran(x0 + SKY_CUBE, y0, 0)
         gx, gy = ecran(x0, y0 + SKY_CUBE, 0)
-        o.append(
-            '  <g style="--h:%.1f;--d:%.1fpx;--t:%.2fs">'
+        f += (
+            '<g style="--h:%.1f;--d:%.1fpx;--t:%.2fs">'
             '<g transform="translate(%.1f,%.1f) skewY(%.2f)"><rect class="d%d m" x="%.1f" '
             'y="%.4f" width="%.1f" height="%.4f" transform="scale(1,%.1f)"/></g>'
             '<g transform="translate(%.1f,%.1f) skewY(%.2f)"><rect class="g%d m" '
@@ -739,33 +705,295 @@ def carte_skyline(r, p):
     # cubes des semaines suivantes.
     for w, lab in mois:
         x, y = ecran(w + 0.5, 7.2, 0)
-        if x - len(lab) * 6.1 < X0 - 12:
+        if x - 2 - f.largeur("mono", lab, corps_mois) < 10:
             continue
-        o.append('  <text x="%.1f" y="%.1f" text-anchor="end" font-family="%s" font-size="10" '
-                 'fill="%s">%s</text>' % (x - 2, y + 11, MONO, p["dim"], esc(lab)))
+        f += '<g class="mois">%s</g>' % f.texte("mono", lab, corps_mois, x - 2, y + 11, ancre="end",
+                                                  fill=p["discret"])
 
-    # Les quatre chiffres, dans les deux coins que la diagonale laisse vides.
-    for b in blocs:
-        o += _bloc(*b[:7], p, icone=b[7])
+    f += blocs
 
     # Pied : ce que montre la carte, et la légende des niveaux.
-    yp = Y1 + 30
-    o.append('  <text x="%d" y="%d" font-family="%s" font-size="10.5" fill="%s">'
-             '12 derniers mois · un cube par jour</text>' % (X0, yp, MONO, p["muted"]))
-    xd = X1 - 6.3 * 4
-    o.append('  <text x="%d" y="%d" text-anchor="end" font-family="%s" font-size="10.5" '
-             'fill="%s">Plus</text>' % (X1, yp, MONO, p["dim"]))
+    yp = H - 22
+    bord = 26 if mobile else X0
+    f += f.texte("mono", "12 mois · un cube par jour" if mobile else "12 derniers mois · un cube par jour",
+                 10, bord, yp, fill=p["discret"])
+    xd = W - bord
+    f += f.texte("mono", "Plus", 10, xd, yp, ancre="end", fill=p["discret"])
+    xd -= f.largeur("mono", "Plus", 10) + 8
     for k in range(4, -1, -1):
-        xd -= 8 + 11 if k == 4 else 4 + 11
-        o.append('  <rect x="%.1f" y="%d" width="11" height="11" rx="2" fill="%s"/>'
-                 % (xd, yp - 9.5, teintes[k]))
-    o.append('  <text x="%.1f" y="%d" text-anchor="end" font-family="%s" font-size="10.5" '
-             'fill="%s">Moins</text>' % (xd - 8, yp, MONO, p["dim"]))
-    o.append('</svg>')
-    return "\n".join(o) + "\n"
+        xd -= 11
+        f += '<rect class="leg" x="%.1f" y="%.1f" width="11" height="11" rx="2" fill="%s"/>' % (
+            xd, yp - 9.5, teintes[k])
+        xd -= 4
+    f += f.texte("mono", "Moins", 10, xd - 4, yp, ancre="end", fill=p["discret"])
+    return f.rendu()
 
 
-CARTES = (("skyline", carte_skyline), ("records", carte_records))
+# ---------------------------------------------------------- tableau de bord
+#
+# Les records, présentés comme les compteurs d'une voiture : deux grands
+# cadrans dont l'aiguille pointe un record, un compteur kilométrique pour le
+# total, un totalisateur partiel pour les trente derniers jours, deux petits
+# cadrans annulaires. À l'ouverture, les aiguilles balaient toute l'échelle
+# avant de se poser — le contrôle d'allumage d'un vrai tableau de bord.
+
+def _echelle(v):
+    """Graduation ronde : (pas entre deux graduations majeures, nombre
+    d'intervalles). Le maximum est choisi pour que l'aiguille se pose vers les
+    trois quarts de la course : un record doit avoir l'air d'en être un."""
+    cible = max(v, 1) / 0.82
+    for exposant in range(0, 9):
+        for mantisse in (1, 2, 5):
+            pas = mantisse * 10 ** exposant
+            n = int(math.ceil(cible / float(pas)))
+            if 6 <= n <= 10:
+                return pas, n
+    return 1, 8
+
+
+CADRAN_DEBUT, CADRAN_COURSE = 135.0, 270.0   # degrés, sens horaire à l'écran
+
+
+def _cadran(f, cx, cy, R, valeur, legende, detail, plein=False, depart=0.3, dehors=False):
+    """Un grand cadran à aiguille. plein : les graduations portent le nombre
+    entier (0, 200, 400…) comme un compteur de vitesse ; sinon le chiffre des
+    centaines et un multiplicateur, comme un compte-tours."""
+    p = f.p
+    pas, n = _echelle(valeur)
+    maxi = pas * n
+
+    def angle(v):
+        return CADRAN_DEBUT + CADRAN_COURSE * v / maxi
+
+    o = [  # assise sombre, lunette d'or, fond, filet intérieur, guilloché du centre
+         '<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="5"/>'
+         % (_n(cx), _n(cy), _n(R + 3.4), p["creux"]),
+         '<circle cx="%s" cy="%s" r="%s" fill="url(#fc)" stroke="url(#lu)" stroke-width="2.4"/>'
+         % (_n(cx), _n(cy), _n(R)),
+         '<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="1"/>'
+         % (_n(cx), _n(cy), _n(R - 6.5), p["trait"]),
+         '<use href="#gu" transform="translate(%s %s) scale(%s)" opacity="0.22"/>'
+         % (_n(cx), _n(cy), _n(R * 0.38 / 50.0))]
+    # arc de l'échelle, zone rouge sur le dernier cinquième
+    rs = R - 13
+    o.append('<path d="%s" fill="none" stroke="%s" stroke-width="1"/>'
+             % (arc(cx, cy, rs, angle(0), angle(0.8 * maxi)), p["discret"]))
+    o.append('<path d="%s" fill="none" stroke="%s" stroke-width="3.6"/>'
+             % (arc(cx, cy, rs - 1.3, angle(0.8 * maxi), angle(maxi)), p["rouge"]))
+    # graduations
+    sous = 4 if str(pas)[0] == "2" else 5
+    majeures, mineures = [], []
+    for i in range(n * sous + 1):
+        a = CADRAN_DEBUT + CADRAN_COURSE * i / (n * sous)
+        grande = i % sous == 0
+        x0, y0 = polaire(cx, cy, R - 16, a)
+        x1, y1 = polaire(cx, cy, R - 16 - (0.085 * R if grande else 0.042 * R), a)
+        (majeures if grande else mineures).append("M%.1f,%.1f L%.1f,%.1f" % (x0, y0, x1, y1))
+    o.append('<path d="%s" stroke="%s" stroke-width="1.8" stroke-linecap="round"/>'
+             % (" ".join(majeures), p["encre"]))
+    o.append('<path d="%s" stroke="%s" stroke-width="0.9" opacity="0.75"/>'
+             % (" ".join(mineures), p["doux"]))
+    # chiffres
+    facteur = 1 if plein else 10 ** int(math.floor(math.log10(pas)))
+    corps_chiffre = R * (0.098 if plein else 0.118)
+    for i in range(n + 1):
+        if plein and n > 6 and i % 2:
+            continue
+        v = i * pas
+        x, y = polaire(cx, cy, R - 16 - 0.085 * R - corps_chiffre * (1.0 if plein else 0.82), angle(v))
+        f_ch = p["rouge"] if v >= 0.8 * maxi else p["encre"]
+        o.append(f.texte("titre", "%d" % (v // facteur), corps_chiffre, x,
+                         y + f.t.capitale("titre", corps_chiffre) / 2, ancre="middle", fill=f_ch))
+    if facteur != 1:
+        o.append(f.texte("mono", "× %s" % fr(facteur), max(8, R * 0.066), cx, cy - R * 0.34,
+                         ancre="middle", approche=0.8, fill=p["discret"]))
+    # affichage : le record lui-même
+    corps_valeur = R * 0.3
+    o.append(f.texte("titre", fr(valeur), corps_valeur, cx, cy + R * 0.52, ancre="middle", fill=p["o"],
+                     cascade=(depart + 1.5, 0.06)))
+    if dehors:
+        o.append(f.texte("texte", legende.upper(), 11, cx, cy + R + 24, ancre="middle", approche=1.4,
+                         fill=p["doux"]))
+        o.append(f.texte("mono", detail, 9.4, cx, cy + R + 40, ancre="middle", fill=p["discret"]))
+    else:
+        o.append(f.texte("texte", legende.upper(), R * 0.08, cx, cy + R * 0.71, ancre="middle",
+                         approche=R * 0.011, fill=p["doux"]))
+        o.append(f.texte("mono", detail, R * 0.068, cx, cy + R * 0.825, ancre="middle", fill=p["discret"]))
+    # aiguille : dessinée vers +x, posée par rotation ; l'attribut porte
+    # l'angle final, l'animation balaie l'échelle puis y revient
+    L = R - 24
+    o.append('<g transform="translate(%s %s)">'
+             '<g class="ag" transform="rotate(%.2f)" style="--a:%.2fdeg;--t:%.2fs">'
+             '<path d="M-%.1f,-2.6 L%.1f,-0.6 L%.1f,0.6 L-%.1f,2.6 Z" fill="%s"/>'
+             '<path d="M-%.1f,0 L%.1f,0 L%.1f,0.6 L-%.1f,2.6 Z" fill="%s"/></g>'
+             '<circle r="%.1f" fill="url(#my)" stroke="%s" stroke-width="0.8"/>%s</g>'
+             % (_n(cx), _n(cy), angle(valeur), angle(valeur), depart,
+                R * 0.14, L, L, R * 0.14, p["rouge"],
+                R * 0.14, L, L, R * 0.14, p["rouge_bas"],
+                R * 0.085, p["o_bas"], pique(0, 0.2, R * 0.095, p["fond"])))
+    # reflet du verre : un croissant clair en haut à gauche
+    r_v = R - 9
+    x0, y0 = polaire(cx, cy, r_v, 200)
+    x1, y1 = polaire(cx, cy, r_v, 318)
+    o.append('<path d="M%.1f,%.1f A%s,%s 0 0 1 %.1f,%.1f A%s,%s 0 0 0 %.1f,%.1f Z" fill="url(#vr)"/>'
+             % (x0, y0, _n(r_v), _n(r_v), x1, y1, _n(r_v * 1.55), _n(r_v * 1.55), x0, y0))
+    return o
+
+
+def _anneau(f, cx, cy, r, fraction, valeur, legende, detail, depart=0.6):
+    """Petit cadran annulaire : un arc d'or qui se trace jusqu'à `fraction`."""
+    p = f.p
+    tour = 2 * math.pi * r
+    trace = max(0.0, min(1.0, fraction)) * tour
+    corps = r * 0.6
+    return [
+        '<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="5"/>'
+        % (_n(cx), _n(cy), _n(r), p["trait"]),
+        '<circle class="an" cx="%s" cy="%s" r="%s" fill="none" stroke="url(#lu)" stroke-width="5" '
+        'stroke-linecap="round" stroke-dasharray="%.1f %.1f" transform="rotate(-90 %s %s)" '
+        'style="--l:%.1f;--t:%.2fs"/>'
+        % (_n(cx), _n(cy), _n(r), trace, tour, _n(cx), _n(cy), trace, depart),
+        f.texte("titre", valeur, corps, cx, cy + f.t.capitale("titre", corps) / 2, ancre="middle",
+                fill=p["encre"], cascade=(depart + 0.5, 0.06)),
+        f.texte("texte", legende.upper(), 10, cx, cy + r + 21, ancre="middle", approche=1.3, fill=p["doux"]),
+        f.texte("mono", detail, 8.8, cx, cy + r + 35, ancre="middle", fill=p["discret"]),
+    ]
+
+
+def _compteur(f, cx, y, nombre, cases, lc, hc, depart=0.5, cle="k"):
+    """Compteur à rouleaux centré en cx, haut en y : `cases` rouleaux de
+    lc × hc. Chaque rouleau porte son chiffre final à sa place ; l'animation
+    le fait partir de zéro, les rouleaux de droite tournant davantage."""
+    p = f.p
+    texte = ("%d" % nombre).rjust(cases, "0")[-cases:]
+    premier = len(texte) - len("%d" % nombre)        # zéros de tête : éteints
+    ecart = 3.0
+    large = cases * lc + (cases - 1) * ecart
+    x0 = cx - large / 2.0
+    corps = hc * 0.74
+    ech = corps / 1000.0
+    base = hc / 2.0 + f.t.capitale("titre", corps) / 2.0
+    atlas = f.t.polices["titre"]["g"]
+    f.definis('<clipPath id="c%s"><rect width="%s" height="%s"/></clipPath>' % (cle, _n(lc), _n(hc)))
+    f.definis('<linearGradient id="o%s" x1="0" y1="0" x2="0" y2="1">'
+              '<stop offset="0" stop-color="%s" stop-opacity="0.85"/>'
+              '<stop offset="0.3" stop-color="%s" stop-opacity="0"/>'
+              '<stop offset="0.7" stop-color="%s" stop-opacity="0"/>'
+              '<stop offset="1" stop-color="%s" stop-opacity="0.85"/></linearGradient>'
+              % (cle, p["creux"], p["creux"], p["creux"], p["creux"]))
+    o = ['<rect x="%s" y="%s" width="%s" height="%s" rx="5" fill="%s" stroke="%s" stroke-width="1"/>'
+         % (_n(x0 - 5), _n(y - 5), _n(large + 10), _n(hc + 10), p["creux"], p["trait"])]
+    for i, chiffre in enumerate(texte):
+        x = x0 + i * (lc + ecart)
+        eteint = i < premier
+        rang = i - premier                      # 0 pour le premier chiffre significatif
+        tours = 0 if eteint else min(rang, 2)   # les rouleaux de droite tournent plus
+        pas_total = 0 if eteint else int(chiffre) + 10 * tours
+        uses = []
+        for j in range(pas_total + 1):
+            c = "%d" % (j % 10) if not eteint else chiffre
+            decal = (pas_total - j) * hc / ech
+            uses.append('<use href="#%s" x="%s"%s/>' % (
+                f.t.ref("titre", c), _n((lc / ech - atlas[c][0]) / 2.0),
+                ' y="-%s"' % _n(decal) if decal else ""))
+        o.append('<g transform="translate(%s %s)" clip-path="url(#c%s)">'
+                 '<rect width="%s" height="%s" fill="%s"/>'
+                 '<g%s><g transform="translate(0 %s) scale(%s)" fill="%s"%s>%s</g></g></g>'
+                 % (_n(x), _n(y), cle, _n(lc), _n(hc), p["surface"],
+                    "" if eteint or not pas_total else
+                    ' class="od" style="--n:%spx;--t:%.2fs;--u:%.2fs"' % (_n(pas_total * hc), depart + 0.07 * rang,
+                                                                         1.1 + 0.32 * tours + 0.05 * int(chiffre)),
+                    _n(base), ("%.5f" % ech).rstrip("0"), p["discret"] if eteint else p["encre"],
+                    ' opacity="0.45"' if eteint else "", "".join(uses)))
+    # ombres haute et basse : le bombé des rouleaux
+    o.append('<rect x="%s" y="%s" width="%s" height="%s" fill="url(#o%s)" pointer-events="none"/>'
+             % (_n(x0), _n(y), _n(large), _n(hc), cle))
+    return o
+
+
+def carte_bord(r, p, mobile=False):
+    semaine, s1, s2 = r["semaine"]
+    ref = max(r["jours"])
+    W, H = (450, 690) if mobile else (900, 440)
+    f = Feuille(W, H, p, "Tableau de bord des contributions",
+                "Meilleure semaine : %s contributions (%s). Meilleur mois : %s (%s). "
+                "%s jours actifs sur %s. %s contributions par jour actif. "
+                "%s contributions sur les 30 derniers jours. Total : %s."
+                % (fr(semaine), periode(s1, s2, ref), fr(r["mois_total"]), mois_fr(r["mois"]),
+                   fr(r["actifs"]), fr(r["ecoules"]), decimal(r["moyenne"]), fr(r["trente"]),
+                   fr(r["total"])))
+    cadre(f, "Tableau de bord", horodatage(r["calcule"], court=mobile))
+    f.definis('<linearGradient id="lu" x1="0" y1="0" x2="1" y2="1">'
+              '<stop offset="0" stop-color="%s"/><stop offset="0.45" stop-color="%s"/>'
+              '<stop offset="1" stop-color="%s"/></linearGradient>' % (p["o_haut"], p["o"], p["o_bas"]))
+    f.definis('<radialGradient id="fc" cx="0.5" cy="0.42" r="0.62">'
+              '<stop offset="0" stop-color="%s"/><stop offset="1" stop-color="%s"/></radialGradient>'
+              % (p["surface"], p["creux"]))
+    f.definis('<radialGradient id="my" cx="0.38" cy="0.32" r="0.8">'
+              '<stop offset="0" stop-color="%s"/><stop offset="1" stop-color="%s"/></radialGradient>'
+              % (p["o_haut"], p["o_bas"]))
+    f.definis('<linearGradient id="vr" x1="0" y1="0" x2="0.6" y2="1">'
+              '<stop offset="0" stop-color="#FFFFFF" stop-opacity="%s"/>'
+              '<stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>'
+              % ("0.07" if p["nom"] == "dark" else "0.5"))
+    f.definis('<path id="gu" d="%s" fill="none" stroke="%s" stroke-width="1.1"/>'
+              % (rosace(50, couches=2, k=14), p["o"]))
+    f.style(ANIM)
+    f.style(".ag{animation:ag 2.3s cubic-bezier(.3,.05,.25,1) var(--t) both}"
+            "@keyframes ag{0%%{transform:rotate(%sdeg)}42%%{transform:rotate(%sdeg)}"
+            "100%%{transform:rotate(var(--a))}}"
+            % (_n(CADRAN_DEBUT), _n(CADRAN_DEBUT + CADRAN_COURSE)))
+    f.style(".an{animation:an 1.5s cubic-bezier(.2,.8,.2,1) var(--t) both}"
+            "@keyframes an{from{stroke-dashoffset:var(--l)}}")
+    f.style(".od{animation:od var(--u) cubic-bezier(.12,.75,.2,1) var(--t) both}"
+            "@keyframes od{from{transform:translateY(var(--n))}}")
+    f.style(SANS_ANIM % ".n,.ag,.an,.od")
+
+    part = r["actifs"] / float(max(1, r["ecoules"]))
+    if mobile:
+        R = 98
+        f += _cadran(f, 118, 166, R, semaine, "Meilleure semaine", periode(s1, s2, ref),
+                     depart=0.3, dehors=True)
+        f += _cadran(f, 332, 166, R, r["mois_total"], "Meilleur mois", mois_fr(r["mois"]),
+                     plein=True, depart=0.5, dehors=True)
+        f += f.texte("mono-gras", "COMPTEUR", 9.5, 225, 346, ancre="middle", approche=3, fill=p["o"])
+        f += _compteur(f, 225, 358, r["total"], 6, 36, 48, depart=0.7, cle="k")
+        f += f.texte("mono", "contributions depuis le %s" % jour_fr(r["premier"]), 9.6, 225, 430,
+                     ancre="middle", fill=p["discret"])
+        f += f.texte("mono-gras", "30 DERNIERS JOURS", 9.5, 225, 468, ancre="middle", approche=3, fill=p["o"])
+        f += _compteur(f, 225, 480, r["trente"], max(4, len("%d" % r["trente"])), 27, 36, depart=0.9, cle="p")
+        f += _anneau(f, 118, 590, 36, part, "%d %%" % round(100 * part), "Jours actifs",
+                     "%s sur %s" % (fr(r["actifs"]), fr(r["ecoules"])), depart=1.0)
+        f += _anneau(f, 332, 590, 36, min(1.0, r["moyenne"] / max(1.0, float(r["record"])) * 4),
+                     decimal(r["moyenne"]), "Par jour actif", "en moyenne", depart=1.15)
+    else:
+        R = 130
+        f += _cadran(f, 186, 244, R, semaine, "Meilleure semaine", periode(s1, s2, ref),
+                     depart=0.3)
+        f += _cadran(f, 714, 244, R, r["mois_total"], "Meilleur mois", mois_fr(r["mois"]),
+                     plein=True, depart=0.5)
+        f += _anneau(f, 393, 144, 34, part, "%d %%" % round(100 * part), "Jours actifs",
+                     "%s sur %s" % (fr(r["actifs"]), fr(r["ecoules"])), depart=1.0)
+        f += _anneau(f, 507, 144, 34, min(1.0, r["moyenne"] / max(1.0, float(r["record"])) * 4),
+                     decimal(r["moyenne"]), "Par jour actif", "en moyenne", depart=1.15)
+        f += f.texte("mono-gras", "COMPTEUR", 8.8, 450, 250, ancre="middle", approche=3, fill=p["o"])
+        f += _compteur(f, 450, 260, r["total"], 6, 30, 40, depart=0.7, cle="k")
+        f += f.texte("mono", "contributions depuis le %s" % jour_fr(r["premier"]), 8.8, 450, 322,
+                     ancre="middle", fill=p["discret"])
+        f += f.texte("mono-gras", "30 DERNIERS JOURS", 8.8, 450, 354, ancre="middle", approche=3, fill=p["o"])
+        f += _compteur(f, 450, 364, r["trente"], max(4, len("%d" % r["trente"])), 22, 30, depart=0.9, cle="p")
+    return f.rendu()
+
+
+CARTES = (("skyline", carte_skyline), ("bord", carte_bord))
+
+
+def rendus(r):
+    """(nom de fichier, SVG) pour chaque carte, chaque mise en page, chaque thème."""
+    for nom, rendu in CARTES:
+        for mobile in (False, True):
+            for p in PALETTES:
+                yield "%s%s-%s.svg" % (nom, "-m" if mobile else "", p["nom"]), rendu(r, p, mobile)
 
 
 def main():
@@ -776,20 +1004,20 @@ def main():
     jours = calendrier_demo() if "--demo" in sys.argv else calendrier()
     r = stats(jours)
     os.makedirs(dossier, exist_ok=True)
-    for nom, rendu in CARTES:
-        for suffixe, pal in (("dark", DARK), ("light", LIGHT)):
-            chemin = os.path.join(dossier, "%s-%s.svg" % (nom, suffixe))
-            open(chemin, "w", encoding="utf-8").write(rendu(r, pal))
-            print("écrit :", chemin)
+    for nom, svg in rendus(r):
+        chemin = os.path.join(dossier, nom)
+        with open(chemin, "w", encoding="utf-8") as fichier:
+            fichier.write(svg)
+        print("écrit :", chemin)
     # Trace des dernières journées : si un chiffre paraît faux un jour, cette
     # ligne dit tout de suite ce que GitHub a renvoyé, sans avoir à deviner.
     print("dernières journées vues : " +
           " · ".join("%s=%d" % (k[5:], jours[k]) for k in sorted(jours)[-6:]))
     n, d1, d2 = r["courante"]
     print("total %d · série %d (%s → %s) · plus longue %d · record %d le %s · "
-          "%d jours actifs · %.1f/jour"
+          "%d jours actifs · %.1f/jour · meilleure semaine %d · 30 jours %d"
           % (r["total"], n, d1, d2, r["longue"][0], r["record"], r["record_date"],
-             r["actifs"], r["moyenne"]))
+             r["actifs"], r["moyenne"], r["semaine"][0], r["trente"]))
 
 
 if __name__ == "__main__":
